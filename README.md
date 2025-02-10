@@ -1,6 +1,12 @@
 # PX4ROS2
 
+Guide to install PX4_ROS2. Sligthly modified from:
+https://docs.px4.io/main/en/ros2/user_guide.html#install-px4
 
+Virtuel enviroments can bee an issue, so if errors occur, deactivating conda might help
+```
+conda deactivate
+```
 
 ```
 cd
