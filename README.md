@@ -1,13 +1,18 @@
-# PX4ROS2
+# PX4-Autopilot in simulation envirmonet using ROS2
 
-Guide to install PX4_ROS2. Sligthly modified from:
-https://docs.px4.io/main/en/ros2/user_guide.html#install-px4
 
-Virtuel enviroments can bee an issue, so if errors occur, deactivating conda might help
+
+Virtuel enviroments can in general be an issue, so it's recomended to deactivate.
 ```
 conda deactivate
 ```
+<details>
+<summary>Guide to install PX4-Autopilot </summary>
 
+This guide is sligthly modified from:
+<https://docs.px4.io/main/en/ros2/user_guide.html#install-px4>
+
+### Install PX4
 ```
 cd
 git clone https://github.com/PX4/PX4-Autopilot.git --recursive
@@ -15,6 +20,7 @@ bash ./PX4-Autopilot/Tools/setup/ubuntu.sh
 cd PX4-Autopilot/
 make px4_sitl
 ```
+### Install ROS2
 
 ```
 sudo apt update && sudo apt install locales
@@ -31,7 +37,7 @@ sudo apt install ros-humble-desktop
 sudo apt install ros-dev-tools
 source /opt/ros/humble/setup.bash && echo "source /opt/ros/humble/setup.bash" >> .bashrc
 ```
-
+### Install the Micro XRCE-DDS Agent
 ```
 python3 -m pip install --upgrade pip
 python3 -m pip install --upgrade setuptools wheel twine check-wheel-contents
@@ -47,7 +53,7 @@ make
 sudo make install
 sudo ldconfig /usr/local/lib/
 ```
-
+### Get the ROS2 msg for PX4
 ```
 mkdir -p ~/ws_ros2/src/
 cd ~/ws_ros2/src/
@@ -56,19 +62,43 @@ git clone https://github.com/PX4/px4_ros_com.git
 cd ..
 colcon build
 ```
+#### Remember to source the ROS2 WS
+```
+echo source ~/ws_ros2/install/setup.bash >> ~/.bashrc 
+```
+
+</details>
 
 
-```
-pip install --user -U empy==3.3.4 pyros-genmsg setuptools
-```
+## Running simulation
 
-```
-cd ~/PX4-Autopilot/
-make px4_sitl gz_x500
-```
+The Micro XRCE-DDS Agent can be run with the following command. The default port of the client is 8888
 
 ```
 MicroXRCEAgent udp4 -p 8888
 ```
 
+<details>
+<summary> Gazebo Simulation </summary>
 
+#### Dependencies
+```
+pip install --user -U empy==3.3.4 pyros-genmsg setuptools
+```
+#### Running the simulation
+```
+cd ~/PX4-Autopilot/
+make px4_sitl gz_x500
+```
+
+</details>
+
+
+<details>
+<summary> Isaac sim - Pegasus</summary>
+
+```
+ISSACSIM_ENV
+python3 PegasusSimulator/examples/1_px4_single_vehicle.py 
+```
+</details>
