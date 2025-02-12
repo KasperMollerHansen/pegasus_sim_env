@@ -36,15 +36,15 @@ class PegasusApp:
 
         self.pg.load_environment(SIMULATION_ENVIRONMENTS["Default Environment"])
 
-        self.spawn_windturbine()
+        self.spawn_windturbine(position=[0, 0, 0])
+        self.spawn_quadrotor(position=[5,0,0])
 
 
         self.world.reset()
         self.stop_sim = False
 
-    def spawn_quadrotor(self, camera: bool = True, lidar: bool = True):
+    def spawn_quadrotor(self, position=[0.0, 0.0, 0.07], camera: bool = True, lidar: bool = True):
         prim_path = "/World/quadrotor"
-        position = [0.0, 0.0, 0.07],
         config_multirotor = MultirotorConfig()
         # Create the multirotor configuration
         mavlink_config = PX4MavlinkBackendConfig({
@@ -93,17 +93,14 @@ class PegasusApp:
                 orientation=Gf.Quatd(1.0, 0.0, 0.0, 0.0),  # Gf.Quatd is w,i,j,k
             )
     
-    def spawn_windturbine(self):
+    def spawn_windturbine(self, position=[0., 0., 0.]):
         #Get current path
-        current_path = os.path.dirname(os.path.realpath(__file__))
-        windturbine_path = "/data/windturbine.usdc"
+        windturbine_path = "pegasus_simulation/data/windturbine.usdc"
         add_reference_to_stage(usd_path = windturbine_path, prim_path = "/World/Windturbine")
-        simulation_app.update()
-        while is_stage_loading():
-            simulation_app.update()
-        windturbine = XFormPrim(
+        XFormPrim(
             prim_path = "/World/Windturbine",
-            scale = np.array([1, 1, 1]), # Default scale is 100
+            position = position,
+            scale = np.array([0.1, 0.1, 0.1]), # Default scale is 100
             orientation = rot_utils.euler_angles_to_quats(np.array([90., 0., 180.]), degrees = True)
         )
 
