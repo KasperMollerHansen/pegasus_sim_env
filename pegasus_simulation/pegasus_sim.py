@@ -11,7 +11,7 @@ from pxr import Gf
 import omni.timeline
 import omni.isaac.core.utils.numpy.rotations as rot_utils
 from omni.isaac.core.world import World
-from omni.isaac.core.utils.stage import add_reference_to_stage
+from omni.isaac.core.utils.stage import add_reference_to_stage, is_stage_loading
 from omni.isaac.core.prims import XFormPrim
 from omni.isaac.sensor import Camera
 
@@ -36,7 +36,8 @@ class PegasusApp:
 
         self.pg.load_environment(SIMULATION_ENVIRONMENTS["Default Environment"])
 
-        self.spawn_quadrotor(camera=True, lidar=True)   
+        self.spawn_windturbine()
+
 
         self.world.reset()
         self.stop_sim = False
@@ -91,6 +92,20 @@ class PegasusApp:
                 translation=(0, 0, 1.0),
                 orientation=Gf.Quatd(1.0, 0.0, 0.0, 0.0),  # Gf.Quatd is w,i,j,k
             )
+    
+    def spawn_windturbine(self):
+        #Get current path
+        current_path = os.path.dirname(os.path.realpath(__file__))
+        windturbine_path = "/data/windturbine.usdc"
+        add_reference_to_stage(usd_path = windturbine_path, prim_path = "/World/Windturbine")
+        simulation_app.update()
+        while is_stage_loading():
+            simulation_app.update()
+        windturbine = XFormPrim(
+            prim_path = "/World/Windturbine",
+            scale = np.array([1, 1, 1]), # Default scale is 100
+            orientation = rot_utils.euler_angles_to_quats(np.array([90., 0., 180.]), degrees = True)
+        )
 
 
     def run(self):
