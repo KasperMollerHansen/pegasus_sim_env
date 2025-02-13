@@ -13,7 +13,7 @@ import omni.graph.core as og
 import omni.replicator.core as rep
 import omni.syntheticdata._syntheticdata as sd
 import omni.isaac.core.utils.numpy.rotations as rot_utils
-from omni.isaac.core import World
+from omni.isaac.core import World, SimulationContext
 from omni.isaac.core.utils.stage import add_reference_to_stage
 from omni.isaac.core.prims import XFormPrim
 from omni.isaac.sensor import Camera
@@ -30,13 +30,10 @@ from pegasus.simulator.logic.backends.px4_mavlink_backend import (
 from pegasus.simulator.logic.vehicles.multirotor import Multirotor, MultirotorConfig
 from pegasus.simulator.logic.interface.pegasus_interface import PegasusInterface
 
-# Auxiliary scipy and numpy modules
 import numpy as np
 import os.path
 from scipy.spatial.transform import Rotation
 from sensor_msgs.msg import LaserScan
-
-
 
 enable_extension("omni.isaac.ros2_bridge")
 simulation_app.update()
@@ -109,7 +106,7 @@ class PegasusApp:
         if lidar:
             lidar = self._initialize_lidar(body_frame)
             try:
-                self._publish_lidar(lidar, vehicle_id, freq=10)
+                self._publish_lidar(lidar, vehicle_id)
             except Exception as e:
                 carb.log_error(f"Error publishing lidar: {e}")
 
@@ -185,17 +182,18 @@ class PegasusApp:
         )
         return lidar
     
-    @staticmethod # NOT IMPLEMENTED
-    def _publish_lidar(lidar, veicle_id, freq: int = 10):
+    @staticmethod # Does not specify frame_rate...
+    def _publish_lidar(lidar, vehicle_id):
         render_product = rep.create.render_product(lidar.GetPath(), [1, 1], name="Isaac")
-        step_size = int(60 / freq) 
+        topic_name = f"point_cloud_{vehicle_id}" 
         writer = rep.writers.get("RtxLidar" + "ROS2PublishPointCloud")
-        writer.initialize(topicName="point_cloud", frameId="base_scan")
+        writer.initialize(topicName=topic_name, frameId="sim_lidar")
         writer.attach([render_product])
-        gate_path = omni.syntheticdata.SyntheticData._get_node_path(
-            "RtxLidarIsaacSimulationGate", render_product
-        )
-        og.Controller.attribute(gate_path + ".inputs:step").set(step_size)
+
+        topic_name = f"scan_{vehicle_id}" 
+        writer = rep.writers.get("RtxLidar" + "ROS2PublishLaserScan")
+        writer.initialize(topicName=topic_name, frameId="sim_lidar")
+        writer.attach([render_product])
 
 
     def run(self):
