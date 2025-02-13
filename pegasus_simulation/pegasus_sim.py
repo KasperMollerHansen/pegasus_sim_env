@@ -7,14 +7,19 @@ from isaacsim import SimulationApp
 simulation_app = SimulationApp({"headless": False})
 
 
-from pxr import Gf
+
+from pxr import Gf, UsdLux, Sdf
 
 import omni.timeline
+import omni.graph.core as og
+import omni.replicator.core as rep
+import omni.syntheticdata._syntheticdata as sd
 import omni.isaac.core.utils.numpy.rotations as rot_utils
-from omni.isaac.core.world import World
+from omni.isaac.core import World
 from omni.isaac.core.utils.stage import add_reference_to_stage, is_stage_loading
 from omni.isaac.core.prims import XFormPrim
 from omni.isaac.sensor import Camera
+from omni.isaac.core.utils.extensions import enable_extension
 
 
 # Import the Pegasus API for simulating drones
@@ -35,18 +40,31 @@ from scipy.spatial.transform import Rotation
 
 class PegasusApp:
     def __init__(self):
+
         self.timeline = omni.timeline.get_timeline_interface()
         self.pg = PegasusInterface()
         self.pg._world = World(**self.pg._world_settings)
         self.world = self.pg.world
-
-        self.pg.load_environment(SIMULATION_ENVIRONMENTS["Default Environment"])
-
-        self.spawn_windturbine(position=[0, 0, 0])
+        self.world.scene.add_default_ground_plane()
+        self.spawn_ground_plane()
+        self.spawn_light()
+        self.spawn_windturbine(position=[0, 0, -0.25])
         self.spawn_quadrotor(position=[5, 0, 0])
 
         self.world.reset()
         self.stop_sim = False
+
+    def spawn_ground_plane(self):
+        XFormPrim(
+        prim_path = "/World/defaultGroundPlane",
+        scale = np.array([1000., 1000., 1000.])
+        )
+
+    def spawn_light(self):
+        light = UsdLux.SphereLight.Define(self.world.stage, Sdf.Path("/World/Light"))
+        light.CreateRadiusAttr(50.)
+        light.CreateIntensityAttr(1000.0)
+        light.AddTranslateOp().Set(Gf.Vec3f(1000., 1000., 1000.))
 
     def spawn_quadrotor(
         self, position=[0.0, 0.0, 0.07], camera: bool = True, lidar: bool = True
@@ -92,6 +110,8 @@ class PegasusApp:
                     np.array([0.0, 0.0, 0.0]), degrees=True
                 ),
             )
+            camera.initialize()
+            self._publish_rgb_camera(camera)
 
         if lidar:
             lidar_frame = XFormPrim(
@@ -107,7 +127,7 @@ class PegasusApp:
                 orientation=Gf.Quatd(1.0, 0.0, 0.0, 0.0),  # Gf.Quatd is w,i,j,k
             )
 
-    def spawn_windturbine(self, position=[0.0, 0.0, 0.0]):
+    def spawn_windturbine(self, position=[0.0, 0.0, -0.25]):
         # Get current path
         windturbine_path = "pegasus_simulation/data/windturbine.usdc"
         add_reference_to_stage(
@@ -121,6 +141,31 @@ class PegasusApp:
                 np.array([90.0, 0.0, 180.0]), degrees=True
             ),
         )
+
+    @staticmethod
+    def _publish_rgb_camera(camera, freq: int=30):
+        render_product = camera._render_product_path
+        step_size = int(60/freq)
+        topic_name = camera.name+"_rgb"
+        queue_size = 1
+        node_namespace = ""
+        frame_id = camera.prim_path
+
+        rv = omni.syntheticdata.SyntheticData.convert_sensor_type_to_rendervar(sd.SensorType.Rgb.name)
+        writer = rep.writers.get(rv + "ROS2PublishImage")
+        writer.initialize(
+            frameId = frame_id,
+            nodeNamespace = node_namespace,
+            queueSize = queue_size,
+            topicName = topic_name
+        )
+        writer.attach([render_product])
+        gate_path = omni.syntheticdata.SyntheticData._get_node_path(
+            rv + "IsaacSimulationGate", render_product
+        )
+        og.Controller.attribute(gate_path + ".inputs:step").set(step_size)
+
+
 
     def run(self):
         self.timeline.play()
