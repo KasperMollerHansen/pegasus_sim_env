@@ -1,11 +1,59 @@
 # PX4-Autopilot in simulation envirmonet using ROS2
 
-
-
 Virtuel enviroments can in general be an issue, so it's recomended to deactivate.
 ```
 conda deactivate
 ```
+
+<details>
+<summary>Guide to install Isaac Sim v.4.2.0 </summary>
+
+This guide is slightly modified from:
+<https://docs.isaacsim.omniverse.nvidia.com/latest/installation/install_workstation.html>
+
+### Install Isaac Sim
+Ensure system requirements as stated by the documentation...
+
+Download Isaac Sim v.4.2.0 from <https://docs.isaacsim.omniverse.nvidia.com/latest/installation/download.html#isaac-sim-latest-release> and place in Downloads
+
+```
+mkdir ~/isaacsim
+cd ~/Downloads
+unzip "your-downloaded-file.zip" -d ~/isaacsim
+cd ~/isaacsim
+./omni.isaac.sim.post.install.run.sh
+./isaac-sim.sh
+```
+Isaac Sim should now open...
+
+Create a conda environment for Isaac Sim and Pegasus Simulator
+```
+conda create -n isaac_env python=3.10
+```
+Create alias in ~/.bashrc
+```
+alias isaac_env="conda activate isaac_env && source ~/isaacsim/setup_conda_env.sh"
+```
+
+</details>
+
+<details>
+<summary>Guide to install Pegasus Simulator for Isaac Sim v.4.2.0 </summary>
+
+This guide is slightly modified from:
+<https://pegasussimulator.github.io/PegasusSimulator/>
+
+### Install Pegasus Simulator
+```
+isaac_env
+cd
+git clone git clone https://github.com/PegasusSimulator/PegasusSimulator.git
+cd PegasusSimulator/extensions
+python -m pip install --editable pegasus.simulator
+```
+
+</details>
+
 <details>
 <summary>Guide to install PX4-Autopilot </summary>
 
