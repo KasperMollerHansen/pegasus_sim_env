@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Set the conda environment
-export ISAAC_CONDA_ENV="env_isaacsim"
+export ISAAC_CONDA_ENV="isaac_env"
 
 # Isaac Sim root directory  
 export ISAACSIM_PATH="$HOME/isaacsim"
@@ -15,7 +15,7 @@ source $ISAACSIM_PATH/setup_conda_env.sh
 
 # Execute the Python script
 echo "Running Python script..."
-python3 pegasus_simulation/pegasus_sim.py
+python pegasus_simulation/pegasus_sim.py
 
 # Deactivate the conda environment
 conda deactivate
