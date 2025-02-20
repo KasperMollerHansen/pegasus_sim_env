@@ -1,6 +1,5 @@
 #!/usr/bin/env python
 
-
 import carb
 from isaacsim import SimulationApp
 
@@ -13,7 +12,8 @@ import omni.graph.core as og
 import omni.replicator.core as rep
 import omni.syntheticdata._syntheticdata as sd
 import omni.isaac.core.utils.numpy.rotations as rot_utils
-from omni.isaac.core import World, SimulationContext
+import omni.isaac.core.utils.prims as prims_utils
+from omni.isaac.core import World
 from omni.isaac.core.utils.stage import add_reference_to_stage
 from omni.isaac.core.prims import XFormPrim
 from omni.isaac.sensor import Camera
@@ -36,6 +36,7 @@ from scipy.spatial.transform import Rotation
 from sensor_msgs.msg import LaserScan
 
 enable_extension("omni.isaac.ros2_bridge")
+
 simulation_app.update()
 
 class PegasusApp:
@@ -50,9 +51,8 @@ class PegasusApp:
         self.spawn_light()
         self.spawn_windturbine(position=[0, 0, -0.25])
         # MicroXRCEAgent provides a unique topic name for vehicle_id=0
-        self.spawn_quadrotor(position=[5, 0, 0], rotation=[0,0,180], vehicle_id=1)
-        self.spawn_quadrotor(position=[0, 5, 0], rotation=[0,0,-90], vehicle_id=2)
-
+        self.spawn_quadrotor(position=[5, 0, 0], rotation=[0,0,180], vehicle_id=0)
+        # self.spawn_quadrotor(position=[0, 5, 0], rotation=[0,0,-90], vehicle_id=2)
         self.world.reset()
         self.stop_sim = False
 
@@ -95,24 +95,33 @@ class PegasusApp:
         )
 
         body_frame = XFormPrim(
-            prim_path=prim_path + "/body",
-            position=position,
+            prim_path = prim_path + "/body",
+            position = position,
         )
+
+        self._publish_clock()
+        frame_prims = []
         if camera:
             camera = self._initialize_camera(body_frame, resolution=(640, 480))
+            frame_prims.append("/".join(camera.prim_path.split("/")[:-1]))
             camera.initialize()
             self._publish_rgb_camera(camera, vehicle_id)
 
         if lidar:
             lidar = self._initialize_lidar(body_frame)
+            frame_prims.append("/".join(prims_utils.get_prim_path(lidar).split("/")[:-1]))
             try:
                 self._publish_lidar(lidar, vehicle_id)
             except Exception as e:
                 carb.log_error(f"Error publishing lidar: {e}")
 
+        if len(frame_prims) >= 1:
+            self._publish_tf(frame_prims)
+
     def spawn_windturbine(self, position=[0.0, 0.0, -0.25]):
         # Get current path
-        windturbine_path = "pegasus_simulation/data/windturbine.usdc"
+        # windturbine_path = "pegasus_simulation/data/windturbine.usdc"
+        windturbine_path = "data/windturbine.usdc"
         add_reference_to_stage(
             usd_path=windturbine_path, prim_path="/World/Windturbine"
         )
@@ -129,17 +138,12 @@ class PegasusApp:
     def _initialize_camera(body_frame, resolution=(640, 480)):
         camera_frame = XFormPrim(
                 prim_path=body_frame.prim_path + "/camera_frame",
-                position=body_frame.get_world_pose()[0]
-                + np.array(
-                    [0.0, 0.0, 0.5]
-                ),  # Offset camera frame relative to body frame
+                position=body_frame.get_world_pose()[0] + np.array([0.0, 0.0, 0.5]),  # Offset camera frame relative to body frame
             )
         camera = Camera(
             prim_path=camera_frame.prim_path + "/Camera",
             resolution=resolution,
-            orientation=rot_utils.euler_angles_to_quats(
-                np.array([0.0, 0.0, 0.0]), degrees=True
-            ),
+            orientation=rot_utils.euler_angles_to_quats(np.array([0.0, 0.0, 0.0]), degrees=True),
         )
         return camera
 
@@ -173,28 +177,106 @@ class PegasusApp:
             position=body_frame.get_world_pose()[0] + np.array([0.0, 0.0, 0.5]),
         )
 
+        # lidar_config = "Example_Rotary"
+        lidar_config = "OS1_REV7_128ch10hz1024res"
+
         _, lidar = omni.kit.commands.execute(
             "IsaacSensorCreateRtxLidar",
-            path=lidar_frame.prim_path + "/Lidar",
-            config="Example_Rotary",
-            translation=(0, 0, 1.0),
-            orientation=Gf.Quatd(1.0, 0.0, 0.0, 0.0),  # Gf.Quatd is w,i,j,k
+            path = lidar_frame.prim_path + "/Lidar",
+            config = lidar_config,
+            translation = (0, 0, 1.0),
+            orientation = Gf.Quatd(1.0, 0.0, 0.0, 0.0),  # Gf.Quatd is w,i,j,k
         )
         return lidar
     
     @staticmethod # Does not specify frame_rate...
     def _publish_lidar(lidar, vehicle_id):
-        render_product = rep.create.render_product(lidar.GetPath(), [1, 1], name="Isaac")
-        topic_name = f"point_cloud_{vehicle_id}" 
-        writer = rep.writers.get("RtxLidar" + "ROS2PublishPointCloud")
-        writer.initialize(topicName=topic_name, frameId="sim_lidar")
-        writer.attach([render_product])
+        # render_product = rep.create.render_product(lidar.GetPath(), [1, 1], name="Isaac")
+        # topic_name = f"point_cloud_{vehicle_id}" 
+        # writer = rep.writers.get("RtxLidar" + "ROS2PublishPointCloud")
+        # writer.initialize(topicName=topic_name, frameId="Lidar")
+        # writer.attach([render_product])
 
-        topic_name = f"scan_{vehicle_id}" 
-        writer = rep.writers.get("RtxLidar" + "ROS2PublishLaserScan")
-        writer.initialize(topicName=topic_name, frameId="sim_lidar")
-        writer.attach([render_product])
+        # topic_name = f"scan_{vehicle_id}" 
+        # writer = rep.writers.get("RtxLidar" + "ROS2PublishLaserScan")
+        # writer.initialize(topicName=topic_name, frameId="sim_lidar")
+        # writer.attach([render_product])
 
+        og.Controller.edit(
+            {"graph_path": "/Graphs/ROS_Lidar", "evaluator_name": "execution"},
+            {
+                og.Controller.Keys.CREATE_NODES: [
+                    ("RosContext", "omni.isaac.ros2_bridge.ROS2Context"),
+                    ("OnPlaybackTick", "omni.graph.action.OnPlaybackTick"),
+                    ("RunSimFrame", "omni.isaac.core_nodes.OgnIsaacRunOneSimulationFrame"),
+                    ("CreateRenderProduct", "omni.isaac.core_nodes.IsaacCreateRenderProduct"),
+                    ("RTXLidar", "omni.isaac.ros2_bridge.ROS2RtxLidarHelper"),
+                ],
+                og.Controller.Keys.CONNECT: [
+                    ("OnPlaybackTick.outputs:tick", "RunSimFrame.inputs:execIn"),
+                    ("RunSimFrame.outputs:step", "CreateRenderProduct.inputs:execIn"),
+                    ("CreateRenderProduct.outputs:execOut", "RTXLidar.inputs:execIn"),
+                    ("CreateRenderProduct.outputs:renderProductPath", "RTXLidar.inputs:renderProductPath"),
+                    ("RosContext.outputs:context", "RTXLidar.inputs:context"),
+                ],
+                og.Controller.Keys.SET_VALUES: [
+                    ("RTXLidar.inputs:topicName", "/point_cloud"),
+                    ("RTXLidar.inputs:type", "point_cloud"),
+                    ("RTXLidar.inputs:frameId", "lidar_frame"),
+                    ("RTXLidar.inputs:fullScan", True),
+                    ("CreateRenderProduct.inputs:cameraPrim", f"{prims_utils.get_prim_path(lidar)}"),
+                ],
+            }
+        )
+
+    @staticmethod
+    def _publish_tf(frames):
+        og.Controller.edit(
+            {"graph_path": "/Graphs/ROS_TF", "evaluator_name": "execution"},
+            {
+                og.Controller.Keys.CREATE_NODES: [
+                    ("RosContext", "omni.isaac.ros2_bridge.ROS2Context"),
+                    ("ReadSimTime", "omni.isaac.core_nodes.IsaacReadSimulationTime"),
+                    ("OnPlaybackTick", "omni.graph.action.OnPlaybackTick"),
+                    ("PublishTF", "omni.isaac.ros2_bridge.ROS2PublishTransformTree"),
+                ],
+                og.Controller.Keys.CONNECT: [
+                    ("RosContext.outputs:context", "PublishTF.inputs:context"),
+                    ("ReadSimTime.outputs:simulationTime", "PublishTF.inputs:timeStamp"),
+                    ("OnPlaybackTick.outputs:tick", "PublishTF.inputs:execIn"),
+                ],
+                og.Controller.Keys.SET_VALUES: [
+                    ("PublishTF.inputs:topicName", "/tf"),
+                    # ("PublishTF.inputs:targetPrims", [f"{camera_frame}", f"{lidar_frame}"]),
+                    ("PublishTF.inputs:targetPrims", [f"{frame}" for frame in frames]),
+                ],
+            },
+        )
+
+    @staticmethod
+    def _publish_clock():
+        og.Controller.edit(
+            {"graph_path": "/Graphs/Clock", "evaluator_name": "execution"},
+            {
+                og.Controller.Keys.CREATE_NODES: [
+                    ("RosContext", "omni.isaac.ros2_bridge.ROS2Context"),
+                    ("ReadSimTime", "omni.isaac.core_nodes.IsaacReadSimulationTime"),
+                    ("OnPlaybackTick", "omni.graph.action.OnPlaybackTick"),
+                    ("PublishClock", "omni.isaac.ros2_bridge.ROS2PublishClock"),
+                ],
+                og.Controller.Keys.CONNECT: [
+                    ("RosContext.outputs:context", "PublishClock.inputs:context"),
+                    # Connecting simulationTime data of ReadSimTime to the clock publisher node
+                    ("ReadSimTime.outputs:simulationTime", "PublishClock.inputs:timeStamp"),
+                    # Connecting execution of OnPlaybackTick node to PublishClock to automatically publish each frame
+                    ("OnPlaybackTick.outputs:tick", "PublishClock.inputs:execIn"),
+                ],
+                og.Controller.Keys.SET_VALUES: [
+                    # Assigning topic names to clock publisher
+                    ("PublishClock.inputs:topicName", "/clock"),
+                ],
+            },
+        )
 
     def run(self):
         self.timeline.play()
