@@ -238,7 +238,7 @@ class PegasusApp:
         )
 
     def _publish_tf(self, frames):
-        topic_name = self.topic_prefix + "/tf"
+        topic_name = "/tf"
         og.Controller.edit(
             {"graph_path": "/Graphs/ROS_TF", "evaluator_name": "execution"},
             {
