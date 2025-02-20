@@ -11,6 +11,7 @@ conda deactivate
 This guide is slightly modified from:
 <https://docs.isaacsim.omniverse.nvidia.com/latest/installation/install_workstation.html>
 
+### Install Isaac Sim
 Ensure system requirements as stated by the documentation...
 
 Download Isaac Sim v.4.2.0 from <https://docs.isaacsim.omniverse.nvidia.com/latest/installation/download.html#isaac-sim-latest-release> and place in Downloads
@@ -42,6 +43,7 @@ alias isaac_env="conda activate isaac_env && source ~/isaacsim/setup_conda_env.s
 This guide is slightly modified from:
 <https://pegasussimulator.github.io/PegasusSimulator/>
 
+### Install Pegasus Simulator
 ```
 isaac_env
 cd
