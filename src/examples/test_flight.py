@@ -3,11 +3,13 @@
 import rclpy
 from rclpy.node import Node
 from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy, DurabilityPolicy
-from px4_msgs.msg import OffboardControlMode, TrajectorySetpoint, VehicleCommand, VehicleLocalPosition, VehicleStatus
+from px4_msgs.msg import OffboardControlMode, TrajectorySetpoint, VehicleCommand, VehicleOdometry, VehicleStatus
 
 from tf2_ros import TransformException
 from tf2_ros.buffer import Buffer
 from tf2_ros.transform_listener import TransformListener
+
+import numpy as np
 
 class TestFlight(Node):
     """Node for controlling a vehicle in offboard mode."""
@@ -32,6 +34,8 @@ class TestFlight(Node):
             VehicleCommand, '/fmu/in/vehicle_command', qos_profile)
 
         # Create subscribers
+        self.vehicle_odometry_subscriber = self.create_subscription(VehicleOdometry, '/fmu/out/vehicle_odometry', self.vehicle_odometry_callback, qos_profile)
+        
         self.vehicle_status_subscriber = self.create_subscription(
             VehicleStatus, '/fmu/out/vehicle_status', self.vehicle_status_callback, qos_profile)
         
@@ -43,13 +47,15 @@ class TestFlight(Node):
         self.offboard_setpoint_counter = 0
         self.vehicle_status = VehicleStatus()
         self.takeoff_height = -5.0
+        self.current_checkpoint = 0
+        self.coordinates = [[0.,0.,5.],[-3.,0.,5.],[-3.,5.,5.],[0.,0.,1.]]
 
         # Create a timer to publish control commands
         self.timer = self.create_timer(0.1, self.timer_callback)
 
-    def vehicle_local_position_callback(self, vehicle_local_position):
-        """Callback function for vehicle_local_position topic subscriber."""
-        self.vehicle_local_position = vehicle_local_position
+    def vehicle_odometry_callback(self, vehicle_odometry):
+        """Callback function for vehicle_odometry topic subscriber."""
+        self.vehicle_odometry = vehicle_odometry
 
     def vehicle_status_callback(self, vehicle_status):
         """Callback function for vehicle_status topic subscriber."""
@@ -89,25 +95,14 @@ class TestFlight(Node):
         msg.timestamp = int(self.get_clock().now().nanoseconds / 1000)
         self.offboard_control_mode_publisher.publish(msg)
 
-    def publish_position_setpoint(self, x: float, y: float, z: float, yaw: float = 0.0):
+    def publish_position_setpoint(self, position: list, yaw: float) -> None:
         """Publish the trajectory setpoint."""
         msg = TrajectorySetpoint()
-        msg.position = [x, y, z]
-        msg.yaw = yaw
+        msg.position = self.trans_pos(position)
+        msg.yaw = self.trans_yaw(yaw)
         msg.timestamp = int(self.get_clock().now().nanoseconds / 1000)
         self.trajectory_setpoint_publisher.publish(msg)
-        self.get_logger().info(f"Publishing position setpoints {[x, y, z]}")
-
-    def get_tf_transform(self, target_frame, source_frame):
-        try:
-            trans = self.tf_buffer.lookup_transform(
-                target_frame,
-                source_frame,
-                rclpy.time.Time())
-        except TransformException as ex:
-            self.get_logger().info(
-                f'Could not transform {source_frame} to {target_frame}: {ex}')
-            return trans
+        self.get_logger().info(f"Publishing global position setpoints {position}")
 
     def publish_vehicle_command(self, command, **params) -> None:
         """Publish a vehicle command."""
@@ -135,13 +130,34 @@ class TestFlight(Node):
         if self.offboard_setpoint_counter == 10:
             self.engage_offboard_mode()
             self.arm()
-
-        self.publish_position_setpoint(0.0, 0.0, self.takeoff_height)
-
         if self.offboard_setpoint_counter < 11:
             self.offboard_setpoint_counter += 1
+        
+        if self.offboard_setpoint_counter > 10:
+            position = self.coordinates[self.current_checkpoint]
+            yaw = 180.
+            self.publish_position_setpoint(position,yaw)
+        
+            if np.linalg.norm(np.array(self.trans_pos(self.vehicle_odometry.position)) - np.array(self.coordinates[self.current_checkpoint])) < 0.2:
+                self.current_checkpoint += 1
+                if self.current_checkpoint == len(self.coordinates):
+                    self.land()
+                    self.disarm()
+                    self.get_logger().info("Landing")
+                    self.timer.cancel()
+                    self.destroy_node()
+                    rclpy.shutdown()
+                    return
 
-
+    @staticmethod
+    def trans_pos(position: list):
+        new_position = [position[1], position[0], -position[2]]
+        return new_position
+    @staticmethod
+    def trans_yaw(yaw: float):
+        new_yaw = -yaw
+        return new_yaw
+        
 def main(args=None) -> None:
     print('Starting offboard control node...')
     rclpy.init(args=args)

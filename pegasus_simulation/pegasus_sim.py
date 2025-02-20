@@ -50,9 +50,9 @@ class PegasusApp:
         self.world.scene.add_default_ground_plane()
         self.spawn_ground_plane(scale=[500, 500, 500])
         self.spawn_light()
-        self.spawn_windturbine(position=[0, 0, -0.25])
+        self.spawn_windturbine(position=[-5, 0, -0.25])
         # MicroXRCEAgent provides a unique topic name for vehicle_id=0
-        self.spawn_quadrotor(position=[5, 0, 0], rotation=[0, 0, 180], vehicle_id=0)
+        self.spawn_quadrotor(position=[0, 0, 0], rotation=[0, 0, 180], vehicle_id=0)
         # self.spawn_quadrotor(position=[0, 5, 0], rotation=[0,0,-90], vehicle_id=2)
         self.world.reset()
         self.stop_sim = False
