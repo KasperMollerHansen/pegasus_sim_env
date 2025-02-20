@@ -57,6 +57,7 @@ class PegasusApp:
         self.stop_sim = False
 
     @staticmethod
+
     def spawn_ground_plane(scale=[1000, 1000, 1000]):
         XFormPrim(
         prim_path = "/World/defaultGroundPlane",
@@ -119,9 +120,7 @@ class PegasusApp:
             self._publish_tf(frame_prims)
 
     def spawn_windturbine(self, position=[0.0, 0.0, -0.25]):
-        # Get current path
-        # windturbine_path = "pegasus_simulation/data/windturbine.usdc"
-        windturbine_path = "data/windturbine.usdc"
+        windturbine_path = "pegasus_simulation/data/windturbine.usdc"
         add_reference_to_stage(
             usd_path=windturbine_path, prim_path="/World/Windturbine"
         )
@@ -177,7 +176,6 @@ class PegasusApp:
             position=body_frame.get_world_pose()[0] + np.array([0.0, 0.0, 0.5]),
         )
 
-        # lidar_config = "Example_Rotary"
         lidar_config = "OS1_REV7_128ch10hz1024res"
 
         _, lidar = omni.kit.commands.execute(
@@ -191,17 +189,6 @@ class PegasusApp:
     
     @staticmethod # Does not specify frame_rate...
     def _publish_lidar(lidar, vehicle_id):
-        # render_product = rep.create.render_product(lidar.GetPath(), [1, 1], name="Isaac")
-        # topic_name = f"point_cloud_{vehicle_id}" 
-        # writer = rep.writers.get("RtxLidar" + "ROS2PublishPointCloud")
-        # writer.initialize(topicName=topic_name, frameId="Lidar")
-        # writer.attach([render_product])
-
-        # topic_name = f"scan_{vehicle_id}" 
-        # writer = rep.writers.get("RtxLidar" + "ROS2PublishLaserScan")
-        # writer.initialize(topicName=topic_name, frameId="sim_lidar")
-        # writer.attach([render_product])
-
         og.Controller.edit(
             {"graph_path": "/Graphs/ROS_Lidar", "evaluator_name": "execution"},
             {
@@ -247,7 +234,6 @@ class PegasusApp:
                 ],
                 og.Controller.Keys.SET_VALUES: [
                     ("PublishTF.inputs:topicName", "/tf"),
-                    # ("PublishTF.inputs:targetPrims", [f"{camera_frame}", f"{lidar_frame}"]),
                     ("PublishTF.inputs:targetPrims", [f"{frame}" for frame in frames]),
                 ],
             },
@@ -266,13 +252,10 @@ class PegasusApp:
                 ],
                 og.Controller.Keys.CONNECT: [
                     ("RosContext.outputs:context", "PublishClock.inputs:context"),
-                    # Connecting simulationTime data of ReadSimTime to the clock publisher node
                     ("ReadSimTime.outputs:simulationTime", "PublishClock.inputs:timeStamp"),
-                    # Connecting execution of OnPlaybackTick node to PublishClock to automatically publish each frame
                     ("OnPlaybackTick.outputs:tick", "PublishClock.inputs:execIn"),
                 ],
                 og.Controller.Keys.SET_VALUES: [
-                    # Assigning topic names to clock publisher
                     ("PublishClock.inputs:topicName", "/clock"),
                 ],
             },
@@ -291,7 +274,6 @@ class PegasusApp:
 
 def main():
     pg_app = PegasusApp()
-
     pg_app.run()
 
 
