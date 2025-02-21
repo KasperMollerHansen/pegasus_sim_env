@@ -53,6 +53,7 @@ class PegasusApp:
         self.spawn_windturbine(position=[-5, 0, -0.25])
         # MicroXRCEAgent provides a unique topic name for vehicle_id=0
         self.spawn_quadrotor(position=[0, 0, 0], rotation=[0, 0, 180], vehicle_id=0)
+        self.spawn_quadrotor(position=[0, 0, 0], rotation=[0, 0, 180], vehicle_id=0)
         # self.spawn_quadrotor(position=[0, 5, 0], rotation=[0,0,-90], vehicle_id=2)
         self.world.reset()
         self.stop_sim = False
@@ -238,6 +239,7 @@ class PegasusApp:
         )
 
     def _publish_tf(self, frames):
+        topic_name = "/tf"
         topic_name = "/tf"
         og.Controller.edit(
             {"graph_path": "/Graphs/ROS_TF", "evaluator_name": "execution"},
