@@ -39,7 +39,7 @@ install(TARGETS setpoints_node
     DESTINATION lib/${PROJECT_NAME}
 )
 
-ament_target_dependencies(setpoints__node rclcpp px4_msgs)
+ament_target_dependencies(setpoints_node rclcpp px4_msgs)
 
 # Build tests if required
 if(BUILD_TESTING)

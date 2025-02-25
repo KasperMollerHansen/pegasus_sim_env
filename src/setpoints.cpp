@@ -5,7 +5,6 @@
 #include <rclcpp/rclcpp.hpp>
 #include <rclcpp/qos.hpp>
 #include <stdint.h>
-
 #include <chrono>
 #include <iostream>
 
@@ -29,9 +28,8 @@ public:
         qos_profile.durability(RMW_QOS_POLICY_DURABILITY_TRANSIENT_LOCAL);
 
         // Create subscriber for vehicle control mode (to check the armed status)
-        arming_status_subscriber_ = this->create_subscription<px4_msgs::msg::VehicleControlMode>(
-            "/fmu/out/vehicle_control_mode", qos_profile, [this](const px4_msgs::msg::VehicleControlMode::SharedPtr msg) {
-                // Set the armed_ status based on the received flag_armed
+        arming_status_subscriber_ = this->create_subscription<VehicleControlMode>(
+            "/fmu/out/vehicle_control_mode", qos_profile, [this](const VehicleControlMode::SharedPtr msg) {
                 armed_ = msg->flag_armed;
                 if (armed_) {
                     RCLCPP_INFO(this->get_logger(), "Drone is armed.");
@@ -40,16 +38,16 @@ public:
                 }
             });
 
-        // Create subscriber with QoS
+        // Create subscriber for trajectory setpoints
         trajectory_setpoint_subscriber_ = this->create_subscription<TrajectorySetpoint>(
             "/target_setpoint", qos_profile, [this](const TrajectorySetpoint::SharedPtr msg) {
                 RCLCPP_INFO(this->get_logger(), "Received target setpoint");
-        
-                // Publish Offboard Control Mode and Trajectory Setpoint only after receiving valid data
+
+                // Publish Offboard Control Mode and Trajectory Setpoint
                 publish_offboard_control_mode();
                 publish_trajectory_setpoint(msg);
-        
-                // If you want to arm only after receiving a setpoint, you can do that here
+
+                // Arm the drone if it's not armed
                 if (!armed_) {
                     publish_vehicle_command(VehicleCommand::VEHICLE_CMD_DO_SET_MODE, 1, 6);
                     arm();
@@ -65,13 +63,14 @@ private:
     rclcpp::Publisher<OffboardControlMode>::SharedPtr offboard_control_mode_publisher_;
     rclcpp::Publisher<TrajectorySetpoint>::SharedPtr trajectory_setpoint_publisher_;
     rclcpp::Publisher<VehicleCommand>::SharedPtr vehicle_command_publisher_;
-    rclcpp::Subscription<px4_msgs::msg::VehicleControlMode>::SharedPtr arming_status_subscriber_;
+    rclcpp::Subscription<VehicleControlMode>::SharedPtr arming_status_subscriber_;
     rclcpp::Subscription<TrajectorySetpoint>::SharedPtr trajectory_setpoint_subscriber_;
 
     void publish_offboard_control_mode();
     void publish_trajectory_setpoint(const TrajectorySetpoint::SharedPtr &received_msg);
     void publish_vehicle_command(uint16_t command, float param1 = 0.0, float param2 = 0.0);
 };
+
 
 /**
  * @brief Send a command to Arm the vehicle
@@ -155,21 +154,13 @@ void OffboardControl::publish_vehicle_command(uint16_t command, float param1, fl
 
 int main(int argc, char *argv[])
 {
-    {
-        // Send the arm command if not already armed
-        if (!armed_) {
-            VehicleCommand arm_command;
-            arm_command.command = VehicleCommand::VEHICLE_CMD_DO_ARM;
-            arm_command.param1 = 1;  // param1=1 to arm
-            vehicle_command_publisher_->publish(arm_command);
-            armed_ = true;  // Update the armed state to true after sending the arm command
-            RCLCPP_INFO(this->get_logger(), "Sent arm command.");
-        }
-    }
-	setvbuf(stdout, NULL, _IONBF, BUFSIZ);
+    setvbuf(stdout, NULL, _IONBF, BUFSIZ);
     rclcpp::init(argc, argv);
-    RCLCPP_INFO(rclcpp::get_logger("offboard_control"), "Starting Offboard Control Node...");
-    rclcpp::spin(std::make_shared<OffboardControl>());
+
+    auto node = std::make_shared<OffboardControl>();
+    RCLCPP_INFO(node->get_logger(), "Starting Offboard Control Node...");
+
+    rclcpp::spin(node);
     rclcpp::shutdown();
     return 0;
 }
