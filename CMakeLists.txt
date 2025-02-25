@@ -15,7 +15,7 @@ if(NOT CMAKE_CXX_STANDARD)
 endif()
 
 if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
-	add_compile_options(-Wall -Wextra -Wpedantic)
+  add_compile_options(-Wall -Wextra -Wpedantic)
 endif()
 
 # find dependencies
@@ -34,12 +34,12 @@ find_package(rclpy REQUIRED)
 include_directories(include)
 
 # Add executable for your project
-add_executable(sim_px4_ros2_node src/setpoints.cpp)
-install(TARGETS sim_px4_ros2_node
+add_executable(setpoints_node src/setpoints.cpp)
+install(TARGETS setpoints_node
     DESTINATION lib/${PROJECT_NAME}
 )
 
-ament_target_dependencies(sim_px4_ros2_node rclcpp px4_msgs)
+ament_target_dependencies(setpoints__node rclcpp px4_msgs)
 
 # Build tests if required
 if(BUILD_TESTING)
