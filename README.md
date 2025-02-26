@@ -47,7 +47,7 @@ This guide is slightly modified from:
 ```
 isaac_env
 cd
-git clone git clone https://github.com/PegasusSimulator/PegasusSimulator.git
+git clone https://github.com/PegasusSimulator/PegasusSimulator.git
 cd PegasusSimulator/extensions
 python -m pip install --editable pegasus.simulator
 ```
