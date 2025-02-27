@@ -32,7 +32,7 @@ conda create -n isaac_env python=3.10
 ```
 Create alias in ~/.bashrc
 ```
-alias ISAAC_ENV="conda activate isaac_env && source ${ISAACSIM_PATH}/setup_conda_env.sh"
+alias ISAAC_ENV="conda activate isaac_env && source ~/isaacsim/setup_conda_env.sh"
 ```
 
 </details>
