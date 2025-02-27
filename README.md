@@ -32,7 +32,7 @@ conda create -n isaac_env python=3.10
 ```
 Create alias in ~/.bashrc
 ```
-alias isaac_env="conda activate isaac_env && source ~/isaacsim/setup_conda_env.sh"
+alias ISAAC_ENV="conda activate isaac_env && source ${ISAACSIM_PATH}/setup_conda_env.sh"
 ```
 
 </details>
@@ -45,7 +45,7 @@ This guide is slightly modified from:
 
 ### Install Pegasus Simulator
 ```
-isaac_env
+ISAAC_ENV
 cd
 git clone https://github.com/PegasusSimulator/PegasusSimulator.git
 cd PegasusSimulator/extensions
