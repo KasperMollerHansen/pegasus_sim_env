@@ -32,7 +32,7 @@ class TestFlight(Node):
         )
 
         self.trajectory_setpoint_publisher = self.create_publisher(
-            TrajectorySetpoint, "/target_setpoint", qos_profile
+            TrajectorySetpoint, "in/target_setpoint", qos_profile
         )
 
         # tf topic subscriber

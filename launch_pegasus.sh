@@ -13,6 +13,8 @@ conda activate $ISAAC_CONDA_ENV
 # Source the conda environment
 source $ISAACSIM_PATH/setup_conda_env.sh
 
+MicroXRCEAgent udp4 -p 8888 &
+
 # Execute the Python script
 echo "Running Python script..."
 python pegasus_simulation/pegasus_sim.py

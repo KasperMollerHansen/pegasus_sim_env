@@ -33,7 +33,7 @@ find_package(rclpy REQUIRED)
 # Include directories for your package
 include_directories(include)
 
-# Add executable for your project
+# Add executable for src/setpoints.cpp
 add_executable(setpoints_node src/setpoints.cpp)
 install(TARGETS setpoints_node
     DESTINATION lib/${PROJECT_NAME}
@@ -46,5 +46,18 @@ if(BUILD_TESTING)
   find_package(ament_lint_auto REQUIRED)
   ament_lint_auto_find_test_dependencies()
 endif()
+
+###########
+# Python ##
+###########
+
+# Install Python modules
+ament_python_install_package(${PROJECT_NAME})
+
+# Install Python executables
+install(PROGRAMS
+  src/examples/test_flight.py
+  DESTINATION lib/${PROJECT_NAME}
+)
 
 ament_package()

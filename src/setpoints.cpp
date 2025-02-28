@@ -40,7 +40,7 @@ public:
 
         // Create subscriber for trajectory setpoints
         trajectory_setpoint_subscriber_ = this->create_subscription<TrajectorySetpoint>(
-            "/target_setpoint", qos_profile, [this](const TrajectorySetpoint::SharedPtr msg) {
+            "in/target_setpoint", qos_profile, [this](const TrajectorySetpoint::SharedPtr msg) {
                 RCLCPP_INFO(this->get_logger(), "Received target setpoint");
 
                 // Publish Offboard Control Mode and Trajectory Setpoint
