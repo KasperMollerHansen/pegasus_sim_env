@@ -74,7 +74,12 @@ class PegasusApp:
         camera: bool = True,
         lidar: bool = True,
     ):
-        prim_path = f"/odom/quadrotor_{vehicle_id}"
+        odom_frame= XFormPrim(
+            prim_path="/odom",
+            position=position,
+        )
+
+        prim_path = odom_frame.prim_path + f"/quadrotor_{vehicle_id}"
         config_multirotor = MultirotorConfig()
         # Create the multirotor configuration
         mavlink_config = PX4MavlinkBackendConfig(
@@ -102,8 +107,10 @@ class PegasusApp:
         )
 
         self._publish_clock()
-        frame_prims = [body_frame.prim_path]
+        
+        frame_prims = []
 
+        base_link_frame = self._initialize_base_link_frame(body_frame)
 
         # Initialize Camera if enabled
         if camera:
@@ -124,7 +131,7 @@ class PegasusApp:
 
         # Publish the TF tree, ensuring the correct hierarchy
         if len(frame_prims) >= 1:
-            self._publish_tf(frame_prims)
+            self._publish_tf(odom_frame.prim_path, base_link_frame.prim_path, frame_prims)
 
     def spawn_windturbine(self, position=[0.0, 0.0, -0.25]):
         windturbine_path = "pegasus_simulation/data/windturbine.usdc"
@@ -139,6 +146,14 @@ class PegasusApp:
                 np.array([90.0, 0.0, 180.0]), degrees=True
             ),
         )
+
+    @staticmethod
+    def _initialize_base_link_frame(body_frame):
+        base_link_frame = XFormPrim(
+            prim_path=body_frame.prim_path + "/base_link",
+            position=body_frame.get_world_pose()[0],
+        )
+        return base_link_frame
 
     @staticmethod
     def _initialize_camera(body_frame, resolution=(640, 480)):
@@ -239,7 +254,8 @@ class PegasusApp:
             },
         )
 
-    def _publish_tf(self, frames):
+    @staticmethod
+    def _publish_tf(odom, base_link, frames):
         topic_name = "/tf"
         og.Controller.edit(
             {"graph_path": "/Graphs/ROS_TF", "evaluator_name": "execution"},
@@ -248,9 +264,17 @@ class PegasusApp:
                     ("RosContext", "omni.isaac.ros2_bridge.ROS2Context"),
                     ("ReadSimTime", "omni.isaac.core_nodes.IsaacReadSimulationTime"),
                     ("OnPlaybackTick", "omni.graph.action.OnPlaybackTick"),
+                    ("PublishODOM", "omni.isaac.ros2_bridge.ROS2PublishTransformTree"),
                     ("PublishTF", "omni.isaac.ros2_bridge.ROS2PublishTransformTree"),
                 ],
                 og.Controller.Keys.CONNECT: [
+                    ("RosContext.outputs:context", "PublishODOM.inputs:context"),
+                    (
+                        "ReadSimTime.outputs:simulationTime",
+                        "PublishODOM.inputs:timeStamp",
+                    ),
+                    ("OnPlaybackTick.outputs:tick", "PublishODOM.inputs:execIn"),
+
                     ("RosContext.outputs:context", "PublishTF.inputs:context"),
                     (
                         "ReadSimTime.outputs:simulationTime",
@@ -259,7 +283,11 @@ class PegasusApp:
                     ("OnPlaybackTick.outputs:tick", "PublishTF.inputs:execIn"),
                 ],
                 og.Controller.Keys.SET_VALUES: [
+                    ("PublishODOM.inputs:topicName", f"{topic_name}"),
+                    ("PublishODOM.inputs:parentPrim", f"{odom}"),
+                    ("PublishODOM.inputs:targetPrims", f"{base_link}"),
                     ("PublishTF.inputs:topicName", f"{topic_name}"),
+                    ("PublishTF.inputs:parentPrim", f"{base_link}"),
                     ("PublishTF.inputs:targetPrims", [f"{frame}" for frame in frames]),
                 ],
             },
