@@ -46,27 +46,43 @@ class PegasusApp:
         self.pg = PegasusInterface()
         self.pg._world = World(**self.pg._world_settings)
         self.world = self.pg.world
-        self.world.scene.add_default_ground_plane()
-        self.spawn_ground_plane(scale=[500, 500, 500])
-        self.spawn_light()
-        self.spawn_windturbine(position=[-5, 0, -0.25])
-        # MicroXRCEAgent provides a unique topic name for vehicle_id=0
-        self.spawn_quadrotor(position=[0, 0, 0], rotation=[0, 0, 180], vehicle_id=0)
-        # self.spawn_quadrotor(position=[0, 5, 0], rotation=[0,0,-90], vehicle_id=2)
+        
+        self.setup_scene()
         self.world.reset()
         self.stop_sim = False
 
+    def setup_scene(self):
+        self.world.scene.add_default_ground_plane()
+        self._spawn_ground_plane(scale=[500, 500, 500])
+        self._spawn_light()
+        self._spawn_windturbine(position=[-5, 0, -0.25])
+        self._spawn_quadrotor(position=[0, 0, 0], rotation=[0, 0, 180], vehicle_id=0)
+
     @staticmethod
-    def spawn_ground_plane(scale=[1000, 1000, 1000]):
+    def _spawn_ground_plane(scale=[1000, 1000, 1000]):
         XFormPrim(prim_path="/World/defaultGroundPlane", scale=scale)
 
-    def spawn_light(self):
+    def _spawn_light(self):
         light = UsdLux.SphereLight.Define(self.world.stage, Sdf.Path("/World/Light"))
         light.CreateRadiusAttr(50.0)
         light.CreateIntensityAttr(1000.0)
         light.AddTranslateOp().Set(Gf.Vec3f(1000.0, 1000.0, 1000.0))
 
-    def spawn_quadrotor(
+    def _spawn_windturbine(self, position=[0.0, 0.0, -0.25]):
+        windturbine_path = "pegasus_simulation/data/windturbine.usdc"
+        add_reference_to_stage(
+            usd_path=windturbine_path, prim_path="/World/Windturbine"
+        )
+        XFormPrim(
+            prim_path="/World/Windturbine",
+            position=position,
+            scale=np.array([0.1, 0.1, 0.1]),  # Default scale is 100
+            orientation=rot_utils.euler_angles_to_quats(
+                np.array([90.0, 0.0, 180.0]), degrees=True
+            ),
+        )
+        
+    def _spawn_quadrotor(
         self,
         position=[0.0, 0.0, 0.07],
         rotation=[0.0, 0.0, 0.0],
@@ -132,20 +148,6 @@ class PegasusApp:
         # Publish the TF tree, ensuring the correct hierarchy
         if len(frame_prims) >= 1:
             self._publish_tf(odom_frame.prim_path, base_link_frame.prim_path, frame_prims)
-
-    def spawn_windturbine(self, position=[0.0, 0.0, -0.25]):
-        windturbine_path = "pegasus_simulation/data/windturbine.usdc"
-        add_reference_to_stage(
-            usd_path=windturbine_path, prim_path="/World/Windturbine"
-        )
-        XFormPrim(
-            prim_path="/World/Windturbine",
-            position=position,
-            scale=np.array([0.1, 0.1, 0.1]),  # Default scale is 100
-            orientation=rot_utils.euler_angles_to_quats(
-                np.array([90.0, 0.0, 180.0]), degrees=True
-            ),
-        )
 
     @staticmethod
     def _initialize_base_link_frame(body_frame):
