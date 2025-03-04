@@ -97,7 +97,7 @@ class PegasusApp:
         )
 
         body_frame = XFormPrim(
-            prim_path=prim_path + "/base_link",
+            prim_path=prim_path + "/body",
             position=position,
         )
 

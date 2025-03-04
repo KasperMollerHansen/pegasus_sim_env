@@ -22,6 +22,8 @@ python pegasus_simulation/pegasus_sim.py
 # Deactivate the conda environment
 conda deactivate
 
+pkill MicroXRCEAgent
+
 # End of file
 
 
