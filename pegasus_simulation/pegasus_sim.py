@@ -74,7 +74,7 @@ class PegasusApp:
         camera: bool = True,
         lidar: bool = True,
     ):
-        prim_path = f"/World/quadrotor_{vehicle_id}"
+        prim_path = f"/odom/quadrotor_{vehicle_id}"
         config_multirotor = MultirotorConfig()
         # Create the multirotor configuration
         mavlink_config = PX4MavlinkBackendConfig(
@@ -97,29 +97,32 @@ class PegasusApp:
         )
 
         body_frame = XFormPrim(
-            prim_path=prim_path + "/body",
+            prim_path=prim_path + "/base_link",
             position=position,
         )
 
         self._publish_clock()
-        frame_prims = []
-        frame_prims.append(body_frame.prim_path)
+        frame_prims = [body_frame.prim_path]
+
+
+        # Initialize Camera if enabled
         if camera:
             camera = self._initialize_camera(body_frame, resolution=(640, 480))
-            frame_prims.append("/".join(camera.prim_path.split("/")[:-1]))
+            camera_frame_path = "/".join(camera.prim_path.split("/")[:-1])  # Get the parent path
+            frame_prims.append(camera_frame_path)
             camera.initialize()
             self._publish_rgb_camera(camera, vehicle_id)
 
         if lidar:
             lidar = self._initialize_lidar(body_frame)
-            frame_prims.append(
-                "/".join(prims_utils.get_prim_path(lidar).split("/")[:-1])
-            )
+            lidar_frame_path = "/".join(prims_utils.get_prim_path(lidar).split("/")[:-1])
+            frame_prims.append(lidar_frame_path)
             try:
                 self._publish_lidar(lidar, vehicle_id)
             except Exception as e:
                 carb.log_error(f"Error publishing lidar: {e}")
 
+        # Publish the TF tree, ensuring the correct hierarchy
         if len(frame_prims) >= 1:
             self._publish_tf(frame_prims)
 
