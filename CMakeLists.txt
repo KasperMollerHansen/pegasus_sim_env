@@ -62,7 +62,7 @@ install(PROGRAMS
 
 # Install python launch files.
 install(FILES
-  src/launch/isaac_sim_example.launch.py
+  src/nvblox_setup/launch/nvblox.launch.py
   DESTINATION share/${PROJECT_NAME}/
 )
 
