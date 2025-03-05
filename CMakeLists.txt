@@ -54,7 +54,7 @@ endif()
 # Install Python modules
 ament_python_install_package(${PROJECT_NAME})
 
-# Install P.gitignoreython executables
+# Install Python executables
 install(PROGRAMS
   src/examples/test_flight.py
   DESTINATION lib/${PROJECT_NAME}
