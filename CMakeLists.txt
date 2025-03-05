@@ -61,9 +61,8 @@ install(PROGRAMS
 )
 
 # Install python launch files.
-install(FILES
-  src/nvblox_setup/launch/nvblox.launch.py
-  DESTINATION share/${PROJECT_NAME}/
-)
+# install(FILES
+#   DESTINATION share/${PROJECT_NAME}/
+# )
 
 ament_package()
