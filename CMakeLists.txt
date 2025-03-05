@@ -54,16 +54,15 @@ endif()
 # Install Python modules
 ament_python_install_package(${PROJECT_NAME})
 
-# Install Python executables
+# Install P.gitignoreython executables
 install(PROGRAMS
   src/examples/test_flight.py
   DESTINATION lib/${PROJECT_NAME}
 )
 
 # Install python launch files.
-install(FILES
-  src/nvblox_setup/launch/nvblox.launch.py
-  DESTINATION share/${PROJECT_NAME}/
-)
+# install(FILES
+#   DESTINATION share/${PROJECT_NAME}/
+# )
 
 ament_package()
