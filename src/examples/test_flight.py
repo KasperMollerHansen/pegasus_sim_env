@@ -46,7 +46,7 @@ class TestFlight(Node):
             qos_profile,
         )
 
-        self.vehicle_odometry = VehicleOdometry() 
+        self.vehicle_odometry = VehicleOdometry()
 
         # Initialize variables
         self.offboard_setpoint_counter = 0
@@ -62,7 +62,7 @@ class TestFlight(Node):
 
         # Create a timer to publish control commands
         self.timer = self.create_timer(0.1, self.timer_callback)
-    
+
     def vehicle_odometry_callback(self, vehicle_odometry):
         """Callback function for vehicle_odometry topic subscriber."""
         self.vehicle_odometry = vehicle_odometry
@@ -84,18 +84,18 @@ class TestFlight(Node):
         current = np.array(current)
         if np.linalg.norm(current - target) < 0.1:
             self.current_checkpoint += 1
-    
+
     @staticmethod
     def transform_position(position: list):
         x, y, z = position
         return [y, x, -z]
-
 
     def timer_callback(self) -> None:
         position = self.coordinates[self.current_checkpoint]
         yaw = 180.0
         self.publish_position_setpoint(position, yaw)
         self.update_coordinates()
+
 
 def main(args=None) -> None:
     print("Starting offboard control node...")
