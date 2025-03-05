@@ -32,3 +32,6 @@ log/
 # Other system files
 .DS_Store
 Thumbs.db
+
+# Vs code 
+.vscode

@@ -1,8 +1,0 @@
-{
-    "files.associations": {
-        "random": "cpp",
-        "algorithm": "cpp",
-        "__node_handle": "cpp",
-        "chrono": "cpp"
-    }
-}
