@@ -37,7 +37,8 @@ from sensor_msgs.msg import LaserScan
 
 enable_extension("omni.isaac.ros2_bridge")
 
-simulation_app.update() 
+simulation_app.update()
+
 
 class PegasusApp:
     def __init__(self):
@@ -46,7 +47,7 @@ class PegasusApp:
         self.pg = PegasusInterface()
         self.pg._world = World(**self.pg._world_settings)
         self.world = self.pg.world
-        
+
         self.setup_scene()
         self.world.reset()
         self.stop_sim = False
@@ -81,7 +82,7 @@ class PegasusApp:
                 np.array([90.0, 0.0, 180.0]), degrees=True
             ),
         )
-        
+
     def _spawn_quadrotor(
         self,
         position=[0.0, 0.0, 0.07],
@@ -90,7 +91,7 @@ class PegasusApp:
         camera: bool = True,
         lidar: bool = True,
     ):
-        odom_frame= XFormPrim(
+        odom_frame = XFormPrim(
             prim_path="/odom",
             position=position,
         )
@@ -123,7 +124,7 @@ class PegasusApp:
         )
 
         self._publish_clock()
-        
+
         frame_prims = []
 
         base_link_frame = self._initialize_base_link_frame(body_frame)
@@ -131,14 +132,18 @@ class PegasusApp:
         # Initialize Camera if enabled
         if camera:
             camera = self._initialize_camera(body_frame, resolution=(640, 480))
-            camera_frame_path = "/".join(camera.prim_path.split("/")[:-1])  # Get the parent path
+            camera_frame_path = "/".join(
+                camera.prim_path.split("/")[:-1]
+            )  # Get the parent path
             frame_prims.append(camera_frame_path)
             camera.initialize()
             self._publish_rgb_camera(camera, vehicle_id)
 
         if lidar:
             lidar = self._initialize_lidar(body_frame)
-            lidar_frame_path = "/".join(prims_utils.get_prim_path(lidar).split("/")[:-1])
+            lidar_frame_path = "/".join(
+                prims_utils.get_prim_path(lidar).split("/")[:-1]
+            )
             frame_prims.append(lidar_frame_path)
             try:
                 self._publish_lidar(lidar, vehicle_id)
@@ -147,7 +152,9 @@ class PegasusApp:
 
         # Publish the TF tree, ensuring the correct hierarchy
         if len(frame_prims) >= 1:
-            self._publish_tf(odom_frame.prim_path, base_link_frame.prim_path, frame_prims)
+            self._publish_tf(
+                odom_frame.prim_path, base_link_frame.prim_path, frame_prims
+            )
 
     @staticmethod
     def _initialize_base_link_frame(body_frame):
@@ -276,7 +283,6 @@ class PegasusApp:
                         "PublishODOM.inputs:timeStamp",
                     ),
                     ("OnPlaybackTick.outputs:tick", "PublishODOM.inputs:execIn"),
-
                     ("RosContext.outputs:context", "PublishTF.inputs:context"),
                     (
                         "ReadSimTime.outputs:simulationTime",
