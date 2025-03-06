@@ -138,6 +138,8 @@ class PegasusApp:
             frame_prims.append(camera_frame_path)
             camera.initialize()
             self._publish_rgb_camera(camera, vehicle_id)
+            self._publish_depth_camera(camera, vehicle_id)
+            self._publish_camera_info(camera, vehicle_id)
 
         if lidar:
             lidar = self._initialize_lidar(body_frame)
@@ -180,10 +182,13 @@ class PegasusApp:
         )
         return camera
 
-    def _publish_rgb_camera(self, camera: Camera, vehicle_id, freq: int = 30):
+    def _publish_rgb_camera(self, camera: Camera, vehicle_id, freq: int = 20):
         render_product = camera._render_product_path
         step_size = int(60 / freq)
-        topic_name = self.topic_prefix + "/" + camera.name + f"_{vehicle_id}_rgb"
+        if vehicle_id == 0:
+            topic_name = self.topic_prefix + "/" + camera.name + "_rgb"
+        else:
+            topic_name = self.topic_prefix + "/" + camera.name + f"_rgb_{vehicle_id}"
         queue_size = 1
         node_namespace = ""
         frame_id = camera.prim_path
@@ -204,6 +209,77 @@ class PegasusApp:
         )
         og.Controller.attribute(gate_path + ".inputs:step").set(step_size)
 
+        return
+
+    def _publish_depth_camera(self, camera: Camera, vehicle_id, freq: int = 20):
+        render_product = camera._render_product_path
+        step_size = int(60 / freq)
+        if vehicle_id == 0:
+            topic_name = self.topic_prefix + "/" + camera.name + "_depth"
+        else:
+            topic_name = self.topic_prefix + "/" + camera.name + f"_depth_{vehicle_id}"
+        queue_size = 1
+        node_namespace = ""
+        frame_id = camera.prim_path
+
+        rv = omni.syntheticdata.SyntheticData.convert_sensor_type_to_rendervar(
+                            sd.SensorType.DistanceToImagePlane.name
+        )
+        writer = rep.writers.get(rv + "ROS2PublishImage")
+        writer.initialize(
+            frameId=frame_id,
+            nodeNamespace=node_namespace,
+            queueSize=queue_size,
+            topicName=topic_name,
+        )
+        writer.attach([render_product])
+        gate_path = omni.syntheticdata.SyntheticData._get_node_path(
+            rv + "IsaacSimulationGate", render_product
+        )
+        og.Controller.attribute(gate_path + ".inputs:step").set(step_size)
+
+        return
+    
+    def _publish_camera_info(self, camera: Camera, vehicle_id, freq: int = 20):
+        from omni.isaac.ros2_bridge import read_camera_info
+        # The following code will link the camera's render product and publish the data to the specified topic name.
+        render_product = camera._render_product_path
+        step_size = int(60/freq)
+        if vehicle_id == 0:
+            topic_name = self.topic_prefix +"/" + camera.name+"_camera_info"
+        else:
+            topic_name = self.topic_prefix +"/" + camera.name+f"_camera_info_{vehicle_id}"
+        queue_size = 1
+        node_namespace = ""
+        frame_id = camera.prim_path
+
+        writer = rep.writers.get("ROS2PublishCameraInfo")
+        camera_info = read_camera_info(render_product_path=render_product)
+        writer.initialize(
+            frameId=frame_id,
+            nodeNamespace=node_namespace,
+            queueSize=queue_size,
+            topicName=topic_name,
+            width=camera_info["width"],
+            height=camera_info["height"],
+            projectionType=camera_info["projectionType"],
+            k=camera_info["k"].reshape([1, 9]),
+            r=camera_info["r"].reshape([1, 9]),
+            p=camera_info["p"].reshape([1, 12]),
+            physicalDistortionModel=camera_info["physicalDistortionModel"],
+            physicalDistortionCoefficients=camera_info["physicalDistortionCoefficients"],
+        )
+        writer.attach([render_product])
+
+        gate_path = omni.syntheticdata.SyntheticData._get_node_path(
+            "PostProcessDispatch" + "IsaacSimulationGate", render_product
+        )
+
+        # Set step input of the Isaac Simulation Gate nodes upstream of ROS publishers to control their execution rate
+        og.Controller.attribute(gate_path + ".inputs:step").set(step_size)
+
+        return
+
     @staticmethod
     def _initialize_lidar(body_frame):
         lidar_frame = XFormPrim(
@@ -223,7 +299,10 @@ class PegasusApp:
         return lidar
 
     def _publish_lidar(self, lidar, vehicle_id):
-        topic_name = self.topic_prefix + f"/point_cloud_{vehicle_id}"
+        if vehicle_id == 0:
+            topic_name = self.topic_prefix + "/point_cloud"
+        else:
+            topic_name = self.topic_prefix + f"/point_cloud_{vehicle_id}"
         og.Controller.edit(
             {"graph_path": "/Graphs/ROS_Lidar", "evaluator_name": "execution"},
             {
