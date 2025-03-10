@@ -5,7 +5,7 @@ from isaacsim import SimulationApp
 
 simulation_app = SimulationApp({"headless": False})
 
-from pxr import Gf, UsdLux, Sdf
+from pxr import Gf, UsdLux, Sdf, UsdGeom
 
 import omni.timeline
 import omni.graph.core as og
@@ -45,6 +45,7 @@ class PegasusApp:
         self.topic_prefix = "/isaac"
         self.timeline = omni.timeline.get_timeline_interface()
         self.pg = PegasusInterface()
+
         self.pg._world = World(**self.pg._world_settings)
         self.world = self.pg.world
 
@@ -54,10 +55,11 @@ class PegasusApp:
 
     def setup_scene(self):
         self.world.scene.add_default_ground_plane()
+        self._publish_clock()
         self._spawn_ground_plane(scale=[500, 500, 500])
         self._spawn_light()
         self._spawn_windturbine(position=[-5, 0, -0.25])
-        self._spawn_quadrotor(position=[0, 0, 0], rotation=[0, 0, 180], vehicle_id=0)
+        #self._spawn_quadrotor(position=[0, 0, 0], rotation=[0, 0, 180], vehicle_id=0)
 
     @staticmethod
     def _spawn_ground_plane(scale=[1000, 1000, 1000]):
@@ -130,8 +132,6 @@ class PegasusApp:
             position=position,
         )
 
-        self._publish_clock()
-
         frame_prims = []
         base_link_frame = self._initialize_base_link_frame(body_frame)
 
@@ -178,7 +178,7 @@ class PegasusApp:
         camera_frame = XFormPrim(
             prim_path=body_frame.prim_path + "/camera_frame",
             position=body_frame.get_world_pose()[0]
-            + np.array([0.0, 0.0, 0.5]),  # Offset camera frame relative to body frame
+            + np.array([0.0, 0.0, 0.25]),  # Offset camera frame relative to body frame
         )
         camera = Camera(
             prim_path=camera_frame.prim_path + "/Camera",
@@ -388,7 +388,7 @@ class PegasusApp:
         )
 
     def _publish_clock(self):
-        topic_name = self.topic_prefix + "/clock"
+        topic_name = "/clock"
         og.Controller.edit(
             {"graph_path": "/Graphs/Clock", "evaluator_name": "execution"},
             {

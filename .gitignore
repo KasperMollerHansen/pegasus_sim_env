@@ -35,3 +35,6 @@ Thumbs.db
 
 # Vs code 
 .vscode/
+
+# Isaac stage
+Collected_nvblox_sample_scene/
