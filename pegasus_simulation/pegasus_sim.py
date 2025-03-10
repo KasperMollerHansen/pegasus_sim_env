@@ -91,12 +91,14 @@ class PegasusApp:
         camera: bool = True,
         lidar: bool = True,
     ):
-        odom_frame = XFormPrim(
-            prim_path="/odom",
+        world_frame = XFormPrim(
+            prim_path="/World",
             position=position,
         )
-
-        prim_path = odom_frame.prim_path + f"/quadrotor_{vehicle_id}"
+        if vehicle_id == 0:
+            prim_path = world_frame.prim_path + f"/quadrotor"
+        else:
+            prim_path = world_frame.prim_path + f"/quadrotor_{vehicle_id}"
         config_multirotor = MultirotorConfig()
         # Create the multirotor configuration
         mavlink_config = PX4MavlinkBackendConfig(
@@ -118,6 +120,11 @@ class PegasusApp:
             config=config_multirotor,
         )
 
+        odom_frame = XFormPrim(
+            prim_path=prim_path + "/odom",
+            position=position,
+        )
+
         body_frame = XFormPrim(
             prim_path=prim_path + "/body",
             position=position,
@@ -126,7 +133,6 @@ class PegasusApp:
         self._publish_clock()
 
         frame_prims = []
-
         base_link_frame = self._initialize_base_link_frame(body_frame)
 
         # Initialize Camera if enabled
@@ -157,6 +163,7 @@ class PegasusApp:
             self._publish_tf(
                 odom_frame.prim_path, base_link_frame.prim_path, frame_prims
             )
+        return
 
     @staticmethod
     def _initialize_base_link_frame(body_frame):
