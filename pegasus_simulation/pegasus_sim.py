@@ -5,7 +5,7 @@ from isaacsim import SimulationApp
 
 simulation_app = SimulationApp({"headless": False})
 
-from pxr import Gf, UsdLux, Sdf, UsdGeom
+from pxr import Gf, UsdLux, Sdf
 
 import omni.timeline
 import omni.graph.core as og
@@ -59,7 +59,7 @@ class PegasusApp:
         self._spawn_ground_plane(scale=[500, 500, 500])
         self._spawn_light()
         self._spawn_windturbine(position=[-5, 0, -0.25])
-        #self._spawn_quadrotor(position=[0, 0, 0], rotation=[0, 0, 180], vehicle_id=0)
+        self._spawn_quadrotor(position=[0, 0, 0], rotation=[0, 0, 0], vehicle_id=0)
 
     @staticmethod
     def _spawn_ground_plane(scale=[1000, 1000, 1000]):
@@ -189,7 +189,7 @@ class PegasusApp:
         )
         return camera
 
-    def _publish_rgb_camera(self, camera: Camera, vehicle_id, freq: int = 20):
+    def _publish_rgb_camera(self, camera: Camera, vehicle_id, freq: int = 30):
         render_product = camera._render_product_path
         step_size = int(60 / freq)
         if vehicle_id == 0:
@@ -218,7 +218,7 @@ class PegasusApp:
 
         return
 
-    def _publish_depth_camera(self, camera: Camera, vehicle_id, freq: int = 20):
+    def _publish_depth_camera(self, camera: Camera, vehicle_id, freq: int = 30):
         render_product = camera._render_product_path
         step_size = int(60 / freq)
         if vehicle_id == 0:
@@ -247,7 +247,7 @@ class PegasusApp:
 
         return
     
-    def _publish_camera_info(self, camera: Camera, vehicle_id, freq: int = 20):
+    def _publish_camera_info(self, camera: Camera, vehicle_id, freq: int = 30):
         from omni.isaac.ros2_bridge import read_camera_info
         # The following code will link the camera's render product and publish the data to the specified topic name.
         render_product = camera._render_product_path
@@ -291,7 +291,7 @@ class PegasusApp:
     def _initialize_lidar(body_frame):
         lidar_frame = XFormPrim(
             prim_path=body_frame.prim_path + "/lidar_frame",
-            position=body_frame.get_world_pose()[0] + np.array([0.0, 0.0, 0.5]),
+            position=body_frame.get_world_pose()[0] + np.array([0.0, 0.0, 0.25]),
         )
 
         lidar_config = "OS1_REV7_128ch10hz1024res"
