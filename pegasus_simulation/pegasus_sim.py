@@ -21,8 +21,7 @@ from omni.isaac.core.utils.extensions import enable_extension
 
 
 # Import the Pegasus API for simulating drones
-from pegasus.simulator.params import ROBOTS, SIMULATION_ENVIRONMENTS
-from pegasus.simulator.logic.state import State
+from pegasus.simulator.params import ROBOTS
 from pegasus.simulator.logic.backends.px4_mavlink_backend import (
     PX4MavlinkBackend,
     PX4MavlinkBackendConfig,
@@ -30,10 +29,10 @@ from pegasus.simulator.logic.backends.px4_mavlink_backend import (
 from pegasus.simulator.logic.vehicles.multirotor import Multirotor, MultirotorConfig
 from pegasus.simulator.logic.interface.pegasus_interface import PegasusInterface
 
+from issac_graphs import IssacGraphs
+
 import numpy as np
-import os.path
 from scipy.spatial.transform import Rotation
-from sensor_msgs.msg import LaserScan
 
 enable_extension("omni.isaac.ros2_bridge")
 
@@ -42,6 +41,8 @@ simulation_app.update()
 
 class PegasusApp:
     def __init__(self):
+        self.ig = IssacGraphs()
+
         self.topic_prefix = "/isaac"
         self.timeline = omni.timeline.get_timeline_interface()
         self.pg = PegasusInterface()
@@ -93,14 +94,18 @@ class PegasusApp:
         camera: bool = True,
         lidar: bool = True,
     ):
-        world_frame = XFormPrim(
-            prim_path="/World",
-            position=position,
-        )
         if vehicle_id == 0:
-            prim_path = world_frame.prim_path + f"/quadrotor"
+            quad_frame = XFormPrim(
+            prim_path="/quadrotor",
+            position=position,
+            )
+            prim_path = quad_frame.prim_path + f"/quadrotor"
         else:
-            prim_path = world_frame.prim_path + f"/quadrotor_{vehicle_id}"
+            quad_frame = XFormPrim(
+            prim_path=f"/quadrotor_{vehicle_id}",
+            position=position,
+            )
+            prim_path = quad_frame.prim_path + f"/quadrotor_{vehicle_id}"
         config_multirotor = MultirotorConfig()
         # Create the multirotor configuration
         mavlink_config = PX4MavlinkBackendConfig(
@@ -143,9 +148,10 @@ class PegasusApp:
             )  # Get the parent path
             frame_prims.append(camera_frame_path)
             camera.initialize()
-            self._publish_rgb_camera(camera, vehicle_id)
-            self._publish_depth_camera(camera, vehicle_id)
-            self._publish_camera_info(camera, vehicle_id)
+            self._publish_camera(camera, vehicle_id)
+            # self._publish_rgb_camera(camera, vehicle_id)
+            # self._publish_depth_camera(camera, vehicle_id)
+            #self._publish_camera_info(camera, vehicle_id)
 
         if lidar:
             lidar = self._initialize_lidar(body_frame)
@@ -180,8 +186,9 @@ class PegasusApp:
             position=body_frame.get_world_pose()[0]
             + np.array([0.0, 0.0, 0.25]),  # Offset camera frame relative to body frame
         )
+        camera_prim = camera_frame.prim_path + "/Camera"
         camera = Camera(
-            prim_path=camera_frame.prim_path + "/Camera",
+            prim_path=camera_prim,
             resolution=resolution,
             orientation=rot_utils.euler_angles_to_quats(
                 np.array([0.0, 0.0, 0.0]), degrees=True
@@ -304,51 +311,23 @@ class PegasusApp:
             orientation=Gf.Quatd(1.0, 0.0, 0.0, 0.0),  # Gf.Quatd is w,i,j,k
         )
         return lidar
-
+    
+    def _publish_camera(self, camera, vehicle_id):
+        frame_id = "camera_frame"
+        if vehicle_id == 0:
+            topic_name = self.topic_prefix + "/camera"
+        else:
+            topic_name = self.topic_prefix + f"/camera_{vehicle_id}"
+        self.ig.camera_graph(camera, topic_name, frame_id)
+        return
+   
     def _publish_lidar(self, lidar, vehicle_id):
         if vehicle_id == 0:
             topic_name = self.topic_prefix + "/point_cloud"
         else:
             topic_name = self.topic_prefix + f"/point_cloud_{vehicle_id}"
-        og.Controller.edit(
-            {"graph_path": "/Graphs/ROS_Lidar", "evaluator_name": "execution"},
-            {
-                og.Controller.Keys.CREATE_NODES: [
-                    ("RosContext", "omni.isaac.ros2_bridge.ROS2Context"),
-                    ("OnPlaybackTick", "omni.graph.action.OnPlaybackTick"),
-                    (
-                        "RunSimFrame",
-                        "omni.isaac.core_nodes.OgnIsaacRunOneSimulationFrame",
-                    ),
-                    (
-                        "CreateRenderProduct",
-                        "omni.isaac.core_nodes.IsaacCreateRenderProduct",
-                    ),
-                    ("RTXLidar", "omni.isaac.ros2_bridge.ROS2RtxLidarHelper"),
-                ],
-                og.Controller.Keys.CONNECT: [
-                    ("OnPlaybackTick.outputs:tick", "RunSimFrame.inputs:execIn"),
-                    ("RunSimFrame.outputs:step", "CreateRenderProduct.inputs:execIn"),
-                    ("CreateRenderProduct.outputs:execOut", "RTXLidar.inputs:execIn"),
-                    (
-                        "CreateRenderProduct.outputs:renderProductPath",
-                        "RTXLidar.inputs:renderProductPath",
-                    ),
-                    ("RosContext.outputs:context", "RTXLidar.inputs:context"),
-                ],
-                og.Controller.Keys.SET_VALUES: [
-                    ("RTXLidar.inputs:topicName", f"{topic_name}"),
-                    ("RTXLidar.inputs:type", "point_cloud"),
-                    ("RTXLidar.inputs:frameId", "lidar_frame"),
-                    ("RTXLidar.inputs:fullScan", True),
-                    (
-                        "CreateRenderProduct.inputs:cameraPrim",
-                        f"{prims_utils.get_prim_path(lidar)}",
-                    ),
-                ],
-            },
-        )
-
+        self.ig.lidar_graph(lidar, topic_name)
+    
     @staticmethod
     def _publish_tf(odom, base_link, frames):
         topic_name = "/tf"
@@ -389,28 +368,7 @@ class PegasusApp:
 
     def _publish_clock(self):
         topic_name = "/clock"
-        og.Controller.edit(
-            {"graph_path": "/Graphs/Clock", "evaluator_name": "execution"},
-            {
-                og.Controller.Keys.CREATE_NODES: [
-                    ("RosContext", "omni.isaac.ros2_bridge.ROS2Context"),
-                    ("ReadSimTime", "omni.isaac.core_nodes.IsaacReadSimulationTime"),
-                    ("OnPlaybackTick", "omni.graph.action.OnPlaybackTick"),
-                    ("PublishClock", "omni.isaac.ros2_bridge.ROS2PublishClock"),
-                ],
-                og.Controller.Keys.CONNECT: [
-                    ("RosContext.outputs:context", "PublishClock.inputs:context"),
-                    (
-                        "ReadSimTime.outputs:simulationTime",
-                        "PublishClock.inputs:timeStamp",
-                    ),
-                    ("OnPlaybackTick.outputs:tick", "PublishClock.inputs:execIn"),
-                ],
-                og.Controller.Keys.SET_VALUES: [
-                    ("PublishClock.inputs:topicName", f"{topic_name}"),
-                ],
-            },
-        )
+        self.ig.clock_graph(topic_name)
 
     def run(self):
         self.timeline.play()
