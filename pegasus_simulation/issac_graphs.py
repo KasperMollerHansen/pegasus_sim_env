@@ -103,8 +103,6 @@ class IssacGraphs:
                 ],
             },
         )
-    
-    
         
     @staticmethod
     def clock_graph(topic_name):

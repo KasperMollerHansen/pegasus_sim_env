@@ -195,66 +195,6 @@ class PegasusApp:
             ),
         )
         return camera
-
-    def _publish_rgb_camera(self, camera: Camera, vehicle_id, freq: int = 30):
-        render_product = camera._render_product_path
-        step_size = int(60 / freq)
-        if vehicle_id == 0:
-            topic_name = self.topic_prefix + "/" + camera.name + "_rgb"
-        else:
-            topic_name = self.topic_prefix + "/" + camera.name + f"_rgb_{vehicle_id}"
-        queue_size = 1
-        node_namespace = ""
-        frame_id = camera.prim_path
-
-        rv = omni.syntheticdata.SyntheticData.convert_sensor_type_to_rendervar(
-            sd.SensorType.Rgb.name
-        )
-        writer = rep.writers.get(rv + "ROS2PublishImage")
-        writer.initialize(
-            frameId=frame_id,
-            nodeNamespace=node_namespace,
-            queueSize=queue_size,
-            topicName=topic_name,
-        )
-        writer.attach([render_product])
-        gate_path = omni.syntheticdata.SyntheticData._get_node_path(
-            rv + "IsaacSimulationGate", render_product
-        )
-        og.Controller.attribute(gate_path + ".inputs:step").set(step_size)
-
-        return
-
-    def _publish_depth_camera(self, camera: Camera, vehicle_id, freq: int = 30):
-        render_product = camera._render_product_path
-        step_size = int(60 / freq)
-        if vehicle_id == 0:
-            topic_name = self.topic_prefix + "/" + camera.name + "_depth"
-        else:
-            topic_name = self.topic_prefix + "/" + camera.name + f"_depth_{vehicle_id}"
-        queue_size = 1
-        node_namespace = ""
-        frame_id = camera.prim_path
-
-        rv = omni.syntheticdata.SyntheticData.convert_sensor_type_to_rendervar(
-                            sd.SensorType.DistanceToImagePlane.name
-        )
-        writer = rep.writers.get(rv + "ROS2PublishImage")
-        writer.initialize(
-            frameId=frame_id,
-            nodeNamespace=node_namespace,
-            queueSize=queue_size,
-            topicName=topic_name,
-        )
-        writer.attach([render_product])
-        gate_path = omni.syntheticdata.SyntheticData._get_node_path(
-            rv + "IsaacSimulationGate", render_product
-        )
-        og.Controller.attribute(gate_path + ".inputs:step").set(step_size)
-
-        return
-    
-    def _publish_camera_info(self, camera: Camera, vehicle_id, freq: int = 30):
         from omni.isaac.ros2_bridge import read_camera_info
         # The following code will link the camera's render product and publish the data to the specified topic name.
         render_product = camera._render_product_path
