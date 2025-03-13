@@ -29,7 +29,7 @@ from pegasus.simulator.logic.backends.px4_mavlink_backend import (
 from pegasus.simulator.logic.vehicles.multirotor import Multirotor, MultirotorConfig
 from pegasus.simulator.logic.interface.pegasus_interface import PegasusInterface
 
-from issac_graphs import IssacGraphs
+from pegasus_simulation.omni_graphs import OmniGraphs
 
 import numpy as np
 from scipy.spatial.transform import Rotation
@@ -41,7 +41,7 @@ simulation_app.update()
 
 class PegasusApp:
     def __init__(self):
-        self.ig = IssacGraphs()
+        self.ig = OmniGraphs()
 
         self.topic_prefix = "/isaac"
         self.timeline = omni.timeline.get_timeline_interface()
@@ -65,12 +65,14 @@ class PegasusApp:
     @staticmethod
     def _spawn_ground_plane(scale=[1000, 1000, 1000]):
         XFormPrim(prim_path="/World/defaultGroundPlane", scale=scale)
+        return
 
     def _spawn_light(self):
         light = UsdLux.SphereLight.Define(self.world.stage, Sdf.Path("/World/Light"))
         light.CreateRadiusAttr(50.0)
         light.CreateIntensityAttr(1000.0)
         light.AddTranslateOp().Set(Gf.Vec3f(1000.0, 1000.0, 1000.0))
+        return
 
     def _spawn_windturbine(self, position=[0.0, 0.0, -0.25]):
         windturbine_path = "pegasus_simulation/data/windturbine.usdc"
@@ -85,6 +87,7 @@ class PegasusApp:
                 np.array([90.0, 0.0, 180.0]), degrees=True
             ),
         )
+        return
 
     def _spawn_quadrotor(
         self,
