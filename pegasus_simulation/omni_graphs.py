@@ -127,17 +127,17 @@ class OmniGraphs:
                     ("ros2_context.outputs:context", "ros2_publish_odometry.inputs:context"),
                     ("ros2_qos_profile.outputs:qosProfile", "ros2_publish_odometry.inputs:qosProfile"),
                     ("isaac_read_simulation_time.outputs:simulationTime", "ros2_publish_odometry.inputs:timeStamp"),
-                    # ("isaac_compute_odeometry_node.outputs:angularVelocity", "ros2_publish_odometry.inputs:angularVelocity"),
-                    # ("isaac_compute_odeometry_node.outputs:linearVelocity", "ros2_publish_odometry.inputs:linearVelocity"),
-                    # ("isaac_compute_odeometry_node.outputs:orientation)", "ros2_publish_odometry.inputs:orientation)"),
-                    # ("isaac_compute_odeometry_node.outputs:position", "ros2_publish_odometry.inputs:position"),
+                    ("isaac_compute_odometry_node.outputs:angularVelocity", "ros2_publish_odometry.inputs:angularVelocity"),
+                    ("isaac_compute_odometry_node.outputs:linearVelocity", "ros2_publish_odometry.inputs:linearVelocity"),
+                    ("isaac_compute_odometry_node.outputs:orientation", "ros2_publish_odometry.inputs:orientation"),
+                    ("isaac_compute_odometry_node.outputs:position", "ros2_publish_odometry.inputs:position"),
                     # ros2_publish_raw_transform_tree inputs
                     ("on_playback_tick.outputs:tick", "ros2_publish_raw_transform_tree.inputs:execIn"),
                     ("ros2_context.outputs:context", "ros2_publish_raw_transform_tree.inputs:context"),
                     ("isaac_read_simulation_time.outputs:simulationTime", "ros2_publish_raw_transform_tree.inputs:timeStamp"),
                     ("ros2_qos_profile.outputs:qosProfile", "ros2_publish_raw_transform_tree.inputs:qosProfile"),
-                    # ("isaac_compute_odometry_node.outputs:position", "ros2_publish_raw_transform_tree.inputs:translation"),
-                    # ("isaac_compute_odometry_node.outputs:orientation", "ros2_publish_raw_transform_tree.inputs:rotation"),
+                    ("isaac_compute_odometry_node.outputs:position", "ros2_publish_raw_transform_tree.inputs:translation"),
+                    ("isaac_compute_odometry_node.outputs:orientation", "ros2_publish_raw_transform_tree.inputs:rotation"),
                                      
                 ],
                 og.Controller.Keys.SET_VALUES: [
@@ -148,7 +148,7 @@ class OmniGraphs:
                     ("tf_tree_base_link_to_body.inputs:parentPrim", f"{base_link_prim}"),
                     ("tf_tree_base_link_to_body.inputs:targetPrims", f"{body_prim}"),
                     # # isaac_compute_odometry_node inputs
-                    # ("isaac_compute_odeometry_node.inputs:chassisPrim", f"{body_prim}"),
+                    ("isaac_compute_odometry_node.inputs:chassisPrim", f"{body_prim}"),
                     # ros2_publish_odometry inputs
                     ("ros2_publish_odometry.inputs:topicName", f"{topic_prefix}/odom"),
                 ],
