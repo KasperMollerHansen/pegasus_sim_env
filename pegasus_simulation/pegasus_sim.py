@@ -41,7 +41,7 @@ simulation_app.update()
 
 class PegasusApp:
     def __init__(self):
-        self.ig = OmniGraphs()
+        self.omni_graphs = OmniGraphs()
 
         self.topic_prefix = "/isaac"
         self.timeline = omni.timeline.get_timeline_interface()
@@ -131,18 +131,18 @@ class PegasusApp:
             config=config_multirotor,
         )
 
-        odom_frame = XFormPrim(
-            prim_path=prim_path + "/odom",
-            position=position,
-        )
+        # odom_frame = XFormPrim(
+        #     prim_path=prim_path + "/odom",
+        #     position=position,
+        # )
 
         body_frame = XFormPrim(
             prim_path=prim_path + "/body",
             position=position,
         )
 
-        frame_prims = []
-        base_link_frame = self._initialize_base_link_frame(body_frame)
+        sensor_prims = []
+        self._initialize_base_link_frame(body_frame)
 
         # Initialize Camera if enabled
         if camera:
@@ -150,7 +150,7 @@ class PegasusApp:
             camera_frame_path = "/".join(
                 camera.prim_path.split("/")[:-1]
             )  # Get the parent path
-            frame_prims.append(camera_frame_path)
+            sensor_prims.append(camera_frame_path)
             camera.initialize()
             self._publish_camera(camera, vehicle_id)
 
@@ -159,17 +159,13 @@ class PegasusApp:
             lidar_frame_path = "/".join(
                 prims_utils.get_prim_path(lidar).split("/")[:-1]
             )
-            frame_prims.append(lidar_frame_path)
+            sensor_prims.append(lidar_frame_path)
             try:
                 self._publish_lidar(lidar, vehicle_id)
             except Exception as e:
                 carb.log_error(f"Error publishing lidar: {e}")
 
-        # Publish the TF tree, ensuring the correct hierarchy
-        if len(frame_prims) >= 1:
-            self._publish_tf(
-                odom_frame.prim_path, base_link_frame.prim_path, frame_prims
-            )
+        self._publish_tf(sensor_prims, prim_path)
         return
 
     @staticmethod
@@ -178,7 +174,7 @@ class PegasusApp:
             prim_path=body_frame.prim_path + "/base_link",
             position=body_frame.get_world_pose()[0],
         )
-        return base_link_frame
+        return
 
     @staticmethod
     def _initialize_camera(body_frame, resolution=(640, 480)):
@@ -259,7 +255,7 @@ class PegasusApp:
             topic_name = self.topic_prefix + "/camera"
         else:
             topic_name = self.topic_prefix + f"/camera_{vehicle_id}"
-        self.ig.camera_graph(camera, topic_name, frame_id)
+        self.omni_graphs.camera_graph(camera, topic_name, frame_id)
         return
    
     def _publish_lidar(self, lidar, vehicle_id):
@@ -267,49 +263,21 @@ class PegasusApp:
             topic_name = self.topic_prefix + "/point_cloud"
         else:
             topic_name = self.topic_prefix + f"/point_cloud_{vehicle_id}"
-        self.ig.lidar_graph(lidar, topic_name)
+        self.omni_graphs.lidar_graph(lidar, topic_name)
     
-    @staticmethod
-    def _publish_tf(odom, base_link, frames):
-        topic_name = "/tf"
-        og.Controller.edit(
-            {"graph_path": "/Graphs/ROS_TF", "evaluator_name": "execution"},
-            {
-                og.Controller.Keys.CREATE_NODES: [
-                    ("RosContext", "omni.isaac.ros2_bridge.ROS2Context"),
-                    ("ReadSimTime", "omni.isaac.core_nodes.IsaacReadSimulationTime"),
-                    ("OnPlaybackTick", "omni.graph.action.OnPlaybackTick"),
-                    ("PublishODOM", "omni.isaac.ros2_bridge.ROS2PublishTransformTree"),
-                    ("PublishTF", "omni.isaac.ros2_bridge.ROS2PublishTransformTree"),
-                ],
-                og.Controller.Keys.CONNECT: [
-                    ("RosContext.outputs:context", "PublishODOM.inputs:context"),
-                    (
-                        "ReadSimTime.outputs:simulationTime",
-                        "PublishODOM.inputs:timeStamp",
-                    ),
-                    ("OnPlaybackTick.outputs:tick", "PublishODOM.inputs:execIn"),
-                    ("RosContext.outputs:context", "PublishTF.inputs:context"),
-                    (
-                        "ReadSimTime.outputs:simulationTime",
-                        "PublishTF.inputs:timeStamp",
-                    ),
-                    ("OnPlaybackTick.outputs:tick", "PublishTF.inputs:execIn"),
-                ],
-                og.Controller.Keys.SET_VALUES: [
-                    ("PublishODOM.inputs:topicName", f"{topic_name}"),
-                    ("PublishODOM.inputs:parentPrim", f"{odom}"),
-                    ("PublishODOM.inputs:targetPrims", f"{base_link}"),
-                    ("PublishTF.inputs:topicName", f"{topic_name}"),
-                    ("PublishTF.inputs:parentPrim", f"{base_link}"),
-                    ("PublishTF.inputs:targetPrims", [f"{frame}" for frame in frames]),
-                ],
-            },
-        )
+
+    def _publish_tf(self, sensor_prims, prim_path):
+        rotor_prims = [f"{prim_path}/rotor_{i}" for i in range(4)]
+        body_prim = prim_path + "/body"
+        base_link_prim = body_prim + "/base_link"
+        topic_prefix = self.topic_prefix
+        self.omni_graphs.tf_graph(base_link_prim, sensor_prims, body_prim, rotor_prims, topic_prefix)
+        return
+        
 
     def _publish_clock(self):
         topic_name = "/clock"
-        self.ig.clock_graph(topic_name)
+        self.omni_graphs.clock_graph(topic_name)
 
     def run(self):
         self.timeline.play()
@@ -329,3 +297,8 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+
+'''
+'/quadrotor/quadrotor/body'
+'''
