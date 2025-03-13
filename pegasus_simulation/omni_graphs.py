@@ -4,9 +4,9 @@ import omni.isaac.core.utils.prims as prims_utils
 class OmniGraphs:
 
     @staticmethod
-    def camera_graph(camera, topic_name, frame_id, resolution: tuple = (640, 480)):
+    def camera_graph(prim_path, camera, topic_name, frame_id, resolution: tuple = (640, 480)):
         og.Controller.edit(
-        {"graph_path": "/Graphs/ROS_Camera", "evaluator_name": "execution"},
+        {"graph_path": f"{prim_path}/ros_camera", "evaluator_name": "execution"},
         {
             og.Controller.Keys.CREATE_NODES: [
                 ("ros2_context", "omni.isaac.ros2_bridge.ROS2Context"),
@@ -60,9 +60,68 @@ class OmniGraphs:
     )
         
     @staticmethod
-    def lidar_graph(lidar, topic_name):
+    def stereo_camera_graph(prim_path, namespace, stereo_prim, camera_prims:tuple, resolution:tuple = (640, 480)):
         og.Controller.edit(
-            {"graph_path": "/Graphs/ROS_Lidar", "evaluator_name": "execution"},
+        {"graph_path": f"{prim_path}/ros_stereo_camera", "evaluator_name": "execution"},
+        {
+            og.Controller.Keys.CREATE_NODES: [
+                ("ros2_context", "omni.isaac.ros2_bridge.ROS2Context"),
+                ("on_playback_tick", "omni.graph.action.OnPlaybackTick"),
+                ("isaac_run_one_simulation_frame","omni.isaac.core_nodes.OgnIsaacRunOneSimulationFrame"),
+                ("isaac_create_render_product","omni.isaac.core_nodes.IsaacCreateRenderProduct"),
+                ("camera_publish_image","omni.isaac.ros2_bridge.ROS2CameraHelper"),
+                ("camera_publish_depth","omni.isaac.ros2_bridge.ROS2CameraHelper"),
+                ("ros2_camera_info_helper","omni.isaac.ros2_bridge.ROS2CameraInfoHelper"),
+                ("ros2_qos_profile", "omni.isaac.ros2_bridge.ROS2QoSProfile"),
+                ("namespace", "omni.graph.nodes.ConstantString"),
+            ],
+            og.Controller.Keys.CONNECT: [
+                # isaac_run_one_simulation_frame inputs
+                ("on_playback_tick.outputs:tick", "isaac_run_one_simulation_frame.inputs:execIn"),
+                # isaac_create_render_product inputs
+                ("isaac_run_one_simulation_frame.outputs:step", "isaac_create_render_product.inputs:execIn"),
+                # camera_publish_image inputs
+                ("ros2_context.outputs:context", "camera_publish_image.inputs:context"),
+                ("ros2_qos_profile.outputs:qosProfile", "camera_publish_image.inputs:qosProfile"),
+                ("isaac_create_render_product.outputs:execOut", "camera_publish_image.inputs:execIn"),
+                ("isaac_create_render_product.outputs:renderProductPath","camera_publish_image.inputs:renderProductPath"),
+                # camera_publish_depth inputs
+                ("ros2_context.outputs:context", "camera_publish_depth.inputs:context"),
+                ("ros2_qos_profile.outputs:qosProfile", "camera_publish_depth.inputs:qosProfile"),
+                ("isaac_create_render_product.outputs:execOut", "camera_publish_depth.inputs:execIn"),
+                ("isaac_create_render_product.outputs:renderProductPath","camera_publish_depth.inputs:renderProductPath"),
+                # ros2_camera_info_helper inputs
+                ("ros2_context.outputs:context", "ros2_camera_info_helper.inputs:context"),
+                ("ros2_qos_profile.outputs:qosProfile", "ros2_camera_info_helper.inputs:qosProfile"),
+                ("isaac_create_render_product.outputs:execOut", "ros2_camera_info_helper.inputs:execIn"),
+                ("isaac_create_render_product.outputs:renderProductPath","ros2_camera_info_helper.inputs:renderProductPath"),
+            ],
+            og.Controller.Keys.SET_VALUES: [
+                # camera_publish_image inputs
+                ("camera_publish_image.inputs:topicName", f"{topic_name}/rgb"),
+                ("camera_publish_image.inputs:type", "rgb"),
+                ("camera_publish_image.inputs:frameId", f"{frame_id}"),
+                # camera_publish_depth inputs
+                ("camera_publish_depth.inputs:topicName", f"{topic_name}/depth"),
+                ("camera_publish_depth.inputs:type", "depth"),
+                ("camera_publish_depth.inputs:frameId", f"{frame_id}"),
+                # ros2_camera_info_helper inputs
+                ("ros2_camera_info_helper.inputs:topicName", f"{topic_name}/info"),
+                ("ros2_camera_info_helper.inputs:frameId", f"{frame_id}"),
+                # isaac_create_render_product inputs
+                ("isaac_create_render_product.inputs:cameraPrim",f"{camera.prim_path}",),
+                ("isaac_create_render_product.inputs:height", resolution[1]),
+                ("isaac_create_render_product.inputs:width", resolution[0]),
+                # namespace inputs
+                ("namespace.value", f"{namespace}"),
+            ],
+        },
+    )
+        
+    @staticmethod
+    def lidar_graph(prim_path, lidar, topic_name):
+        og.Controller.edit(
+            {"graph_path": f"{prim_path}/ros_lidar", "evaluator_name": "execution"},
             {
                 og.Controller.Keys.CREATE_NODES: [
                     ("ros2_context", "omni.isaac.ros2_bridge.ROS2Context"),
@@ -94,9 +153,9 @@ class OmniGraphs:
         )
         
     @staticmethod
-    def tf_graph(base_link_prim, sensor_prims, body_prim, topic_prefix):
+    def tf_graph(prim_path, base_link_prim, sensor_prims, body_prim, topic_prefix):
         og.Controller.edit(
-            {"graph_path": "/Graphs/ROS_TF", "evaluator_name": "execution"},
+            {"graph_path": f"{prim_path}/transform_tree_odometry", "evaluator_name": "execution"},
             {
                 og.Controller.Keys.CREATE_NODES: [
                     ("ros2_context", "omni.isaac.ros2_bridge.ROS2Context"),
@@ -159,7 +218,7 @@ class OmniGraphs:
     @staticmethod
     def clock_graph(topic_name):
         og.Controller.edit(
-            {"graph_path": "/Graphs/ros_clock", "evaluator_name": "execution"},
+            {"graph_path": "/ros_clock", "evaluator_name": "execution"},
             {
                 og.Controller.Keys.CREATE_NODES: [
                     ("ros2_context", "omni.isaac.ros2_bridge.ROS2Context"),

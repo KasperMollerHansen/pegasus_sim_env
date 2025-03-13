@@ -57,7 +57,7 @@ class PegasusApp:
         self._spawn_ground_plane(scale=[500, 500, 500])
         self._spawn_light()
         self._spawn_windturbine(position=[-5, 0, -0.25])
-        self._spawn_quadrotor(position=[0, 0, 0], rotation=[0, 0, 0], vehicle_id=0)
+        self._spawn_quadrotor(position=[1, 0, 0], rotation=[0, 0, 0], vehicle_id=0)
 
     @staticmethod
     def _spawn_ground_plane(scale=[1000, 1000, 1000]):
@@ -95,9 +95,9 @@ class PegasusApp:
         lidar: bool = True,
     ):
         if vehicle_id == 0:
-            prim_path="/World/quadrotor"
+            self.drone_prim_path="/World/quadrotor"
         else:
-            prim_path=f"/World/quadrotor_{vehicle_id}"
+            self.drone_prim_path=f"/World/quadrotor_{vehicle_id}"
   
         config_multirotor = MultirotorConfig()
         # Create the multirotor configuration
@@ -106,13 +106,13 @@ class PegasusApp:
                 "vehicle_id": vehicle_id,
                 "px4_autolaunch": True,
                 "px4_dir": self.pg.px4_path,
-                "px4_vehicle_model": self.pg.px4_default_airframe,  # CHANGE this line to 'iris' if using PX4 version bellow v1.14
+                "px4_vehicle_model": self.pg.px4_default_airframe,
             }
         )
         config_multirotor.backends = [PX4MavlinkBackend(mavlink_config)]
 
         Multirotor(
-            prim_path,
+            self.drone_prim_path,
             ROBOTS["Iris"],
             vehicle_id,
             position,
@@ -120,20 +120,14 @@ class PegasusApp:
             config=config_multirotor,
         )
 
-        body_prim = XFormPrim(
-            prim_path=prim_path + "/body",
-            position=position,
-        )
-        self._initialize_base_link_frame(body_prim)
+        body_prim = XFormPrim(self.drone_prim_path + "/body")
+        base_link_prim = XFormPrim(body_prim.prim_path + "/base_link")
         sensor_prims = []
 
         # Initialize Camera if enabled
         if camera:
-            camera = self._initialize_camera(body_prim, resolution=(640, 480))
-            camera_frame_path = "/".join(
-                camera.prim_path.split("/")[:-1]
-            )  # Get the parent path
-            sensor_prims.append(camera_frame_path)
+            camera, camera_prim= self._initialize_camera(body_prim, resolution=(640, 480))
+            sensor_prims.append(camera_prim.prim_path)
             camera.initialize()
             self._publish_camera(camera, vehicle_id)
 
@@ -148,48 +142,35 @@ class PegasusApp:
             except Exception as e:
                 carb.log_error(f"Error publishing lidar: {e}")
 
-        self._publish_tf(sensor_prims, prim_path)
-        return
-
-    @staticmethod
-    def _initialize_base_link_frame(body_prim):
-        base_link_prim = XFormPrim(
-            prim_path=body_prim.prim_path + "/base_link",
-            position=body_prim.get_world_pose()[0],
-        )
+        self._publish_tf(sensor_prims)
         return
 
     @staticmethod
     def _initialize_camera(body_prim, resolution=(640, 480)):
-        camera_frame = XFormPrim(
-            prim_path=body_prim.prim_path + "/camera_frame",
-            position=body_prim.get_world_pose()[0]
-            + np.array([0.0, 0.0, 0.25]),  # Offset camera frame relative to body frame
+        camera_prim = XFormPrim(
+            prim_path = body_prim.prim_path + "/camera_frame",
+            translation = (0.0, 0.0, 0.25),
         )
-        camera_prim = camera_frame.prim_path + "/Camera"
         camera = Camera(
-            prim_path=camera_prim,
+            prim_path=camera_prim.prim_path + "/camera",
             resolution=resolution,
-            orientation=rot_utils.euler_angles_to_quats(
-                np.array([0.0, 0.0, 0.0]), degrees=True
-            ),
+            translation=(0, 0, 0.0),
         )
-        return camera
+        return camera, camera_prim
 
     @staticmethod
     def _initialize_lidar(body_prim):
         lidar_frame = XFormPrim(
             prim_path=body_prim.prim_path + "/lidar_frame",
-            position=body_prim.get_world_pose()[0] + np.array([0.0, 0.0, 0.25]),
+            translation = (0.0, 0.0, 0.25),
         )
 
         lidar_config = "OS1_REV7_128ch10hz1024res"
 
         _, lidar = omni.kit.commands.execute(
             "IsaacSensorCreateRtxLidar",
-            path=lidar_frame.prim_path + "/Lidar",
+            path=lidar_frame.prim_path + "/lidar",
             config=lidar_config,
-            translation=(0, 0, 1.0),
             orientation=Gf.Quatd(1.0, 0.0, 0.0, 0.0),  # Gf.Quatd is w,i,j,k
         )
         return lidar
@@ -200,7 +181,8 @@ class PegasusApp:
             topic_name = self.topic_prefix + "/camera"
         else:
             topic_name = self.topic_prefix + f"/camera_{vehicle_id}"
-        self.omni_graphs.camera_graph(camera, topic_name, frame_id)
+        prim_path = self.drone_prim_path
+        self.omni_graphs.camera_graph(prim_path, camera, topic_name, frame_id)
         return
    
     def _publish_lidar(self, lidar, vehicle_id):
@@ -208,14 +190,16 @@ class PegasusApp:
             topic_name = self.topic_prefix + "/point_cloud"
         else:
             topic_name = self.topic_prefix + f"/point_cloud_{vehicle_id}"
-        self.omni_graphs.lidar_graph(lidar, topic_name)
+        prim_path = self.drone_prim_path
+        self.omni_graphs.lidar_graph(prim_path, lidar, topic_name)
     
 
-    def _publish_tf(self, sensor_prims, prim_path):
+    def _publish_tf(self, sensor_prims):
+        prim_path = self.drone_prim_path
         body_prim = prim_path + "/body"
         base_link_prim = body_prim + "/base_link"
         topic_prefix = self.topic_prefix
-        self.omni_graphs.tf_graph(base_link_prim, sensor_prims, body_prim, topic_prefix)
+        self.omni_graphs.tf_graph(prim_path, base_link_prim, sensor_prims, body_prim, topic_prefix)
         return
         
 
