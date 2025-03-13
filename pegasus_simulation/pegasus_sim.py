@@ -29,7 +29,7 @@ from pegasus.simulator.logic.backends.px4_mavlink_backend import (
 from pegasus.simulator.logic.vehicles.multirotor import Multirotor, MultirotorConfig
 from pegasus.simulator.logic.interface.pegasus_interface import PegasusInterface
 
-from pegasus_simulation.omni_graphs import OmniGraphs
+from omni_graphs import OmniGraphs
 
 import numpy as np
 from scipy.spatial.transform import Rotation
@@ -109,6 +109,7 @@ class PegasusApp:
             position=position,
             )
             prim_path = quad_frame.prim_path + f"/quadrotor_{vehicle_id}"
+        
         config_multirotor = MultirotorConfig()
         # Create the multirotor configuration
         mavlink_config = PX4MavlinkBackendConfig(
@@ -152,9 +153,6 @@ class PegasusApp:
             frame_prims.append(camera_frame_path)
             camera.initialize()
             self._publish_camera(camera, vehicle_id)
-            # self._publish_rgb_camera(camera, vehicle_id)
-            # self._publish_depth_camera(camera, vehicle_id)
-            #self._publish_camera_info(camera, vehicle_id)
 
         if lidar:
             lidar = self._initialize_lidar(body_frame)
