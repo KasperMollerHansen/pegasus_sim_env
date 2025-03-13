@@ -105,7 +105,6 @@ class OmniGraphs:
                     ("isaac_read_simulation_time", "omni.isaac.core_nodes.IsaacReadSimulationTime"),
                     ("tf_tree_base_link_to_sensors", "omni.isaac.ros2_bridge.ROS2PublishTransformTree"),
                     ("tf_tree_base_link_to_body", "omni.isaac.ros2_bridge.ROS2PublishTransformTree"),
-                    ("tf_tree_base_link_to_rotors", "omni.isaac.ros2_bridge.ROS2PublishTransformTree"),
                     ("isaac_compute_odometry_node", "omni.isaac.core_nodes.IsaacComputeOdometry"),
                     ("ros2_publish_odometry", "omni.isaac.ros2_bridge.ROS2PublishOdometry"),
                     ("ros2_publish_raw_transform_tree", "omni.isaac.ros2_bridge.ROS2PublishRawTransformTree"),
@@ -121,14 +120,9 @@ class OmniGraphs:
                     ("ros2_context.outputs:context", "tf_tree_base_link_to_body.inputs:context"),
                     ("isaac_read_simulation_time.outputs:simulationTime", "tf_tree_base_link_to_body.inputs:timeStamp"),
                     ("ros2_qos_profile.outputs:qosProfile", "tf_tree_base_link_to_body.inputs:qosProfile"),
-                    # tf_tree_base_link_to_rotors inputs
-                    ("on_playback_tick.outputs:tick", "tf_tree_base_link_to_rotors.inputs:execIn"),
-                    ("ros2_context.outputs:context", "tf_tree_base_link_to_rotors.inputs:context"),
-                    ("isaac_read_simulation_time.outputs:simulationTime", "tf_tree_base_link_to_rotors.inputs:timeStamp"),
-                    ("ros2_qos_profile.outputs:qosProfile", "tf_tree_base_link_to_rotors.inputs:qosProfile"),
-                    # # isaac_compute_odometry_node inputs
+                    # isaac_compute_odometry_node inputs
                     ("on_playback_tick.outputs:tick", "isaac_compute_odometry_node.inputs:execIn"),
-                    # # ros2_publish_odometry inputs
+                    # ros2_publish_odometry inputs
                     ("on_playback_tick.outputs:tick", "ros2_publish_odometry.inputs:execIn"),
                     ("ros2_context.outputs:context", "ros2_publish_odometry.inputs:context"),
                     ("ros2_qos_profile.outputs:qosProfile", "ros2_publish_odometry.inputs:qosProfile"),
@@ -137,7 +131,7 @@ class OmniGraphs:
                     # ("isaac_compute_odeometry_node.outputs:linearVelocity", "ros2_publish_odometry.inputs:linearVelocity"),
                     # ("isaac_compute_odeometry_node.outputs:orientation)", "ros2_publish_odometry.inputs:orientation)"),
                     # ("isaac_compute_odeometry_node.outputs:position", "ros2_publish_odometry.inputs:position"),
-                    # # ros2_publish_raw_transform_tree inputs
+                    # ros2_publish_raw_transform_tree inputs
                     ("on_playback_tick.outputs:tick", "ros2_publish_raw_transform_tree.inputs:execIn"),
                     ("ros2_context.outputs:context", "ros2_publish_raw_transform_tree.inputs:context"),
                     ("isaac_read_simulation_time.outputs:simulationTime", "ros2_publish_raw_transform_tree.inputs:timeStamp"),
@@ -153,12 +147,9 @@ class OmniGraphs:
                     # tf_tree_base_link_to_body inputs
                     ("tf_tree_base_link_to_body.inputs:parentPrim", f"{base_link_prim}"),
                     ("tf_tree_base_link_to_body.inputs:targetPrims", f"{body_prim}"),
-                    # tf_tree_base_link_to_rotors inputs
-                    ("tf_tree_base_link_to_rotors.inputs:parentPrim", f"{base_link_prim}"),
-                    ("tf_tree_base_link_to_rotors.inputs:targetPrims", [f"{prims}" for prims in rotor_prims]),
                     # # isaac_compute_odometry_node inputs
                     # ("isaac_compute_odeometry_node.inputs:chassisPrim", f"{body_prim}"),
-                    # # ros2_publish_odometry inputs
+                    # ros2_publish_odometry inputs
                     ("ros2_publish_odometry.inputs:topicName", f"{topic_prefix}/odom"),
                 ],
 

@@ -98,18 +98,10 @@ class PegasusApp:
         lidar: bool = True,
     ):
         if vehicle_id == 0:
-            quad_frame = XFormPrim(
-            prim_path="/quadrotor",
-            position=position,
-            )
-            prim_path = quad_frame.prim_path + f"/quadrotor"
+            prim_path="/World/quadrotor"
         else:
-            quad_frame = XFormPrim(
-            prim_path=f"/quadrotor_{vehicle_id}",
-            position=position,
-            )
-            prim_path = quad_frame.prim_path + f"/quadrotor_{vehicle_id}"
-        
+            prim_path=f"/World/quadrotor_{vehicle_id}"
+  
         config_multirotor = MultirotorConfig()
         # Create the multirotor configuration
         mavlink_config = PX4MavlinkBackendConfig(
@@ -131,22 +123,16 @@ class PegasusApp:
             config=config_multirotor,
         )
 
-        # odom_frame = XFormPrim(
-        #     prim_path=prim_path + "/odom",
-        #     position=position,
-        # )
-
-        body_frame = XFormPrim(
+        body_prim = XFormPrim(
             prim_path=prim_path + "/body",
             position=position,
         )
-
+        self._initialize_base_link_frame(body_prim)
         sensor_prims = []
-        self._initialize_base_link_frame(body_frame)
 
         # Initialize Camera if enabled
         if camera:
-            camera = self._initialize_camera(body_frame, resolution=(640, 480))
+            camera = self._initialize_camera(body_prim, resolution=(640, 480))
             camera_frame_path = "/".join(
                 camera.prim_path.split("/")[:-1]
             )  # Get the parent path
@@ -155,7 +141,7 @@ class PegasusApp:
             self._publish_camera(camera, vehicle_id)
 
         if lidar:
-            lidar = self._initialize_lidar(body_frame)
+            lidar = self._initialize_lidar(body_prim)
             lidar_frame_path = "/".join(
                 prims_utils.get_prim_path(lidar).split("/")[:-1]
             )
@@ -169,18 +155,18 @@ class PegasusApp:
         return
 
     @staticmethod
-    def _initialize_base_link_frame(body_frame):
-        base_link_frame = XFormPrim(
-            prim_path=body_frame.prim_path + "/base_link",
-            position=body_frame.get_world_pose()[0],
+    def _initialize_base_link_frame(body_prim):
+        base_link_prim = XFormPrim(
+            prim_path=body_prim.prim_path + "/base_link",
+            position=body_prim.get_world_pose()[0],
         )
         return
 
     @staticmethod
-    def _initialize_camera(body_frame, resolution=(640, 480)):
+    def _initialize_camera(body_prim, resolution=(640, 480)):
         camera_frame = XFormPrim(
-            prim_path=body_frame.prim_path + "/camera_frame",
-            position=body_frame.get_world_pose()[0]
+            prim_path=body_prim.prim_path + "/camera_frame",
+            position=body_prim.get_world_pose()[0]
             + np.array([0.0, 0.0, 0.25]),  # Offset camera frame relative to body frame
         )
         camera_prim = camera_frame.prim_path + "/Camera"
@@ -232,10 +218,10 @@ class PegasusApp:
         return
 
     @staticmethod
-    def _initialize_lidar(body_frame):
+    def _initialize_lidar(body_prim):
         lidar_frame = XFormPrim(
-            prim_path=body_frame.prim_path + "/lidar_frame",
-            position=body_frame.get_world_pose()[0] + np.array([0.0, 0.0, 0.25]),
+            prim_path=body_prim.prim_path + "/lidar_frame",
+            position=body_prim.get_world_pose()[0] + np.array([0.0, 0.0, 0.25]),
         )
 
         lidar_config = "OS1_REV7_128ch10hz1024res"
