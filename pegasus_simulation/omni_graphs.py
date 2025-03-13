@@ -94,7 +94,7 @@ class OmniGraphs:
         )
         
     @staticmethod
-    def tf_graph(base_link_prim, sensor_prims, body_prim, rotor_prims, topic_prefix):
+    def tf_graph(base_link_prim, sensor_prims, body_prim, topic_prefix):
         og.Controller.edit(
             {"graph_path": "/Graphs/ROS_TF", "evaluator_name": "execution"},
             {

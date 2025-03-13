@@ -253,11 +253,10 @@ class PegasusApp:
     
 
     def _publish_tf(self, sensor_prims, prim_path):
-        rotor_prims = [f"{prim_path}/rotor_{i}" for i in range(4)]
         body_prim = prim_path + "/body"
         base_link_prim = body_prim + "/base_link"
         topic_prefix = self.topic_prefix
-        self.omni_graphs.tf_graph(base_link_prim, sensor_prims, body_prim, rotor_prims, topic_prefix)
+        self.omni_graphs.tf_graph(base_link_prim, sensor_prims, body_prim, topic_prefix)
         return
         
 
