@@ -27,17 +27,14 @@ class OmniGraphs:
                 ("ros2_context.outputs:context", "camera_publish_image.inputs:context"),
                 ("ros2_qos_profile.outputs:qosProfile", "camera_publish_image.inputs:qosProfile"),
                 ("isaac_create_render_product.outputs:execOut", "camera_publish_image.inputs:execIn"),
-                ("isaac_create_render_product.outputs:renderProductPath","camera_publish_image.inputs:renderProductPath"),
                 # camera_publish_depth inputs
                 ("ros2_context.outputs:context", "camera_publish_depth.inputs:context"),
                 ("ros2_qos_profile.outputs:qosProfile", "camera_publish_depth.inputs:qosProfile"),
                 ("isaac_create_render_product.outputs:execOut", "camera_publish_depth.inputs:execIn"),
-                ("isaac_create_render_product.outputs:renderProductPath","camera_publish_depth.inputs:renderProductPath"),
                 # ros2_camera_info_helper inputs
                 ("ros2_context.outputs:context", "ros2_camera_info_helper.inputs:context"),
                 ("ros2_qos_profile.outputs:qosProfile", "ros2_camera_info_helper.inputs:qosProfile"),
                 ("isaac_create_render_product.outputs:execOut", "ros2_camera_info_helper.inputs:execIn"),
-                ("isaac_create_render_product.outputs:renderProductPath","ros2_camera_info_helper.inputs:renderProductPath"),
             ],
             og.Controller.Keys.SET_VALUES: [
                 # camera_publish_image inputs
@@ -60,7 +57,7 @@ class OmniGraphs:
     )
         
     @staticmethod
-    def stereo_camera_graph(prim_path, namespace, stereo_prim, camera_prims:tuple, resolution:tuple = (640, 480)):
+    def stereo_camera_graph(prim_path, namespace, camera_prims:tuple, camera_frame_ids:tuple, resolution:tuple = (640, 480)):
         og.Controller.edit(
         {"graph_path": f"{prim_path}/ros_stereo_camera", "evaluator_name": "execution"},
         {
@@ -68,52 +65,77 @@ class OmniGraphs:
                 ("ros2_context", "omni.isaac.ros2_bridge.ROS2Context"),
                 ("on_playback_tick", "omni.graph.action.OnPlaybackTick"),
                 ("isaac_run_one_simulation_frame","omni.isaac.core_nodes.OgnIsaacRunOneSimulationFrame"),
-                ("isaac_create_render_product","omni.isaac.core_nodes.IsaacCreateRenderProduct"),
-                ("camera_publish_image","omni.isaac.ros2_bridge.ROS2CameraHelper"),
-                ("camera_publish_depth","omni.isaac.ros2_bridge.ROS2CameraHelper"),
+                ("left_camera_render_product","omni.isaac.core_nodes.IsaacCreateRenderProduct"),
+                ("left_camera_publish_image","omni.isaac.ros2_bridge.ROS2CameraHelper"),
+                ("left_camera_frame_id","omni.graph.nodes.ConstantString"),
+                ("left_camera_publish_depth","omni.isaac.ros2_bridge.ROS2CameraHelper"),
+                ("right_camera_render_product","omni.isaac.core_nodes.IsaacCreateRenderProduct"),
+                ("right_camera_publish_image","omni.isaac.ros2_bridge.ROS2CameraHelper"),
+                ("right_camera_frame_id","omni.graph.nodes.ConstantString"),
                 ("ros2_camera_info_helper","omni.isaac.ros2_bridge.ROS2CameraInfoHelper"),
                 ("ros2_qos_profile", "omni.isaac.ros2_bridge.ROS2QoSProfile"),
-                ("namespace", "omni.graph.nodes.ConstantString"),
+                ("camera_namespace", "omni.graph.nodes.ConstantString"),
             ],
             og.Controller.Keys.CONNECT: [
                 # isaac_run_one_simulation_frame inputs
                 ("on_playback_tick.outputs:tick", "isaac_run_one_simulation_frame.inputs:execIn"),
-                # isaac_create_render_product inputs
-                ("isaac_run_one_simulation_frame.outputs:step", "isaac_create_render_product.inputs:execIn"),
-                # camera_publish_image inputs
-                ("ros2_context.outputs:context", "camera_publish_image.inputs:context"),
-                ("ros2_qos_profile.outputs:qosProfile", "camera_publish_image.inputs:qosProfile"),
-                ("isaac_create_render_product.outputs:execOut", "camera_publish_image.inputs:execIn"),
-                ("isaac_create_render_product.outputs:renderProductPath","camera_publish_image.inputs:renderProductPath"),
-                # camera_publish_depth inputs
-                ("ros2_context.outputs:context", "camera_publish_depth.inputs:context"),
-                ("ros2_qos_profile.outputs:qosProfile", "camera_publish_depth.inputs:qosProfile"),
-                ("isaac_create_render_product.outputs:execOut", "camera_publish_depth.inputs:execIn"),
-                ("isaac_create_render_product.outputs:renderProductPath","camera_publish_depth.inputs:renderProductPath"),
+                # left_camera_render_product inputs
+                ("isaac_run_one_simulation_frame.outputs:step", "left_camera_render_product.inputs:execIn"),
+                # right_camera_render_product inputs
+                ("isaac_run_one_simulation_frame.outputs:step", "right_camera_render_product.inputs:execIn"),
+                # left_camera_publish_image inputs
+                ("camera_namespace.inputs:value", "left_camera_publish_image.inputs:nodeNamespace"),
+                ("left_camera_frame_id.inputs:value", "left_camera_publish_image.inputs:frameId"),
+                ("ros2_context.outputs:context", "left_camera_publish_image.inputs:context"),
+                ("ros2_qos_profile.outputs:qosProfile", "left_camera_publish_image.inputs:qosProfile"),
+                ("left_camera_render_product.outputs:execOut", "left_camera_publish_image.inputs:execIn"),
+                # left_camera_publish_depth inputs
+                ("camera_namespace.inputs:value", "left_camera_publish_depth.inputs:nodeNamespace"),
+                ("left_camera_frame_id.inputs:value", "left_camera_publish_depth.inputs:frameId"),
+                ("ros2_context.outputs:context", "left_camera_publish_depth.inputs:context"),
+                ("ros2_qos_profile.outputs:qosProfile", "left_camera_publish_depth.inputs:qosProfile"),
+                ("left_camera_render_product.outputs:execOut", "left_camera_publish_depth.inputs:execIn"),
+                # right_camera_publish_image inputs
+                ("camera_namespace.inputs:value", "right_camera_publish_image.inputs:nodeNamespace"),
+                ("right_camera_frame_id.inputs:value", "right_camera_publish_image.inputs:frameId"),
+                ("ros2_context.outputs:context", "right_camera_publish_image.inputs:context"),
+                ("ros2_qos_profile.outputs:qosProfile", "right_camera_publish_image.inputs:qosProfile"),
+                ("right_camera_render_product.outputs:execOut", "right_camera_publish_image.inputs:execIn"),
                 # ros2_camera_info_helper inputs
+                ("camera_namespace.inputs:value", "ros2_camera_info_helper.inputs:nodeNamespace"),
                 ("ros2_context.outputs:context", "ros2_camera_info_helper.inputs:context"),
                 ("ros2_qos_profile.outputs:qosProfile", "ros2_camera_info_helper.inputs:qosProfile"),
-                ("isaac_create_render_product.outputs:execOut", "ros2_camera_info_helper.inputs:execIn"),
-                ("isaac_create_render_product.outputs:renderProductPath","ros2_camera_info_helper.inputs:renderProductPath"),
+                ("left_camera_render_product.outputs:execOut", "ros2_camera_info_helper.inputs:execIn"),
+                ("left_camera_frame_id.inputs:value", "ros2_camera_info_helper.inputs:frameId"),
+                ("right_camera_render_product.outputs:execOut", "ros2_camera_info_helper.inputs:execIn"),
+                ("right_camera_frame_id.inputs:value", "ros2_camera_info_helper.inputs:frameIdRight"),
             ],
             og.Controller.Keys.SET_VALUES: [
-                # camera_publish_image inputs
-                ("camera_publish_image.inputs:topicName", f"{topic_name}/rgb"),
-                ("camera_publish_image.inputs:type", "rgb"),
-                ("camera_publish_image.inputs:frameId", f"{frame_id}"),
-                # camera_publish_depth inputs
-                ("camera_publish_depth.inputs:topicName", f"{topic_name}/depth"),
-                ("camera_publish_depth.inputs:type", "depth"),
-                ("camera_publish_depth.inputs:frameId", f"{frame_id}"),
+                # camera_namespace inputs
+                ("camera_namespace.inputs:value", f"{namespace}"),
+                # left_camera_frame_id inputs
+                ("left_camera_frame_id.inputs:value", f"{camera_frame_ids[0]}"),
+                # right_camera_frame_id inputs
+                ("right_camera_frame_id.inputs:value", f"{camera_frame_ids[1]}"),
+                # left_camera_publish_image inputs
+                ("left_camera_publish_image.inputs:topicName", f"/left/image"),
+                ("left_camera_publish_image.inputs:type", "rgb"),
+                # left_camera_publish_depth inputs
+                ("left_camera_publish_depth.inputs:topicName", f"/left/depth"),
+                ("left_camera_publish_depth.inputs:type", "depth"),
+                # right_camera_publish_image inputs
+                ("right_camera_publish_image.inputs:topicName", f"/right/image"),
+                ("right_camera_publish_image.inputs:type", "rgb"),
                 # ros2_camera_info_helper inputs
-                ("ros2_camera_info_helper.inputs:topicName", f"{topic_name}/info"),
-                ("ros2_camera_info_helper.inputs:frameId", f"{frame_id}"),
+                ("ros2_camera_info_helper.inputs:topicName", f"/camera_info"),
                 # isaac_create_render_product inputs
-                ("isaac_create_render_product.inputs:cameraPrim",f"{camera.prim_path}",),
-                ("isaac_create_render_product.inputs:height", resolution[1]),
-                ("isaac_create_render_product.inputs:width", resolution[0]),
-                # namespace inputs
-                ("namespace.value", f"{namespace}"),
+                ("left_camera_render_product.inputs:cameraPrim", f"{camera_prims[0].prim_path}"),
+                ("left_camera_render_product.inputs:height", resolution[1]),
+                ("left_camera_render_product.inputs:width", resolution[0]),
+                ("right_camera_render_product.inputs:cameraPrim", f"{camera_prims[1].prim_path}"),
+                ("right_camera_render_product.inputs:height", resolution[1]),
+                ("right_camera_render_product.inputs:width", resolution[0]),
+
             ],
         },
     )
