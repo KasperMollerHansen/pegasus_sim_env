@@ -7,7 +7,7 @@ simulation_app = SimulationApp({"headless": False})
 
 from pxr import Gf, UsdLux, Sdf
 
-import omni.timeline
+import omni
 import omni.isaac.core.utils.numpy.rotations as rot_utils
 import omni.isaac.core.utils.prims as prims_utils
 from omni.isaac.core import World
@@ -27,7 +27,7 @@ from pegasus.simulator.logic.vehicles.multirotor import Multirotor, MultirotorCo
 from pegasus.simulator.logic.interface.pegasus_interface import PegasusInterface
 
 from omni_graphs import OmniGraphs
-from omni_sensors import StereoCamera
+from omni_sensors import StereoCamera, RTXLidar
 
 import numpy as np
 from scipy.spatial.transform import Rotation
@@ -39,6 +39,8 @@ simulation_app.update()
 
 class PegasusApp:
     def __init__(self):
+        self.default_body_children = {"body", "base_link", "Looks"}
+
         self.omni_graphs = OmniGraphs()
 
         self.topic_prefix = "/isaac"
@@ -120,32 +122,25 @@ class PegasusApp:
             Rotation.from_euler("XYZ", rotation, degrees=True).as_quat(),
             config=config_multirotor,
         )
-
-        body_prim = XFormPrim(drone_prim_path + "/body")
-        sensor_prims = []
-
+        
         # Initialize Camera if enabled
         if camera:
             StereoCamera(
                 self.topic_prefix, 
                 drone_prim_path, 
-                vehicle_id=vehicle_id, 
+                vehicle_id=vehicle_id,
+                translation=(0.1, 0.0, 0.2), 
                 resolution=(640, 480)
             )
 
-        if not lidar:
-            lidar = self._initialize_lidar(body_prim)
-            lidar_frame_path = "/".join(
-                prims_utils.get_prim_path(lidar).split("/")[:-1]
+        if lidar:
+            RTXLidar(
+               self.topic_prefix,
+                drone_prim_path,
+                vehicle_id=vehicle_id,
+                translation=(0.0, 0.0, 0.25),
             )
-            sensor_prims.append(lidar_frame_path)
-            try:
-                self._publish_lidar(lidar, vehicle_id)
-            except Exception as e:
-                carb.log_error(f"Error publishing lidar: {e}")
-
-        base_link_prim = XFormPrim(body_prim.prim_path + "/base_link")
-        self._publish_tf(drone_prim_path, sensor_prims)
+        self._publish_tf(drone_prim_path)
         return
 
     @staticmethod
@@ -197,13 +192,39 @@ class PegasusApp:
         self.omni_graphs.lidar_graph(prim_path, lidar, topic_name)
     
 
-    def _publish_tf(self, drone_prim_path, sensor_prims):
-        prim_path = drone_prim_path
-        body_prim = prim_path + "/body"
-        base_link_prim = body_prim + "/base_link"
+    def _publish_tf(self, drone_prim_path):
         topic_prefix = self.topic_prefix
-        self.omni_graphs.tf_graph(prim_path, base_link_prim, sensor_prims, body_prim, topic_prefix)
+        prim_path = drone_prim_path
+        body_prim_path = prim_path + "/body"
+        base_link_prim = XFormPrim(body_prim_path + "/base_link")
+        base_link_prim_path = base_link_prim.prim_path
+
+        body_children = self._remove_default_children(body_prim_path, self.default_body_children)
+        if body_children:
+            sensor_prims = self._get_all_children(body_children)
+        else:
+            sensor_prims = []
+        self.omni_graphs.tf_graph(prim_path, base_link_prim_path, sensor_prims, body_prim_path, topic_prefix)
         return
+    
+    def _remove_default_children(self, prim_path, default_children):
+        prim = prims_utils.get_prim_at_path(prim_path)
+        children = prims_utils.get_prim_children(prim)
+        filtered_children = [child for child in children if child.GetName() not in default_children]
+        return filtered_children
+
+    @staticmethod
+    def _get_all_children(prims: list):
+        idx = 0
+        children_len = 0
+        children = prims
+        while len(children) > children_len:
+            children_len = len(children)
+            for i in range(idx, len(children)):
+                children += prims_utils.get_prim_children(children[i])
+                idx += 1
+        children_path = [str(prim.GetPath()) for prim in children]
+        return children_path
         
 
     def _publish_clock(self):

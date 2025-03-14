@@ -4,9 +4,9 @@ import omni.isaac.core.utils.prims as prims_utils
 class OmniGraphs:
 
     @staticmethod
-    def camera_graph(prim_path, camera, topic_name, frame_id, resolution: tuple = (640, 480)):
+    def camera_graph(camera, topic_name, frame_id, resolution: tuple = (640, 480)):
         og.Controller.edit(
-        {"graph_path": f"{prim_path}/ros_camera", "evaluator_name": "execution"},
+        {"graph_path": "/Graphs/ROS_Camera", "evaluator_name": "execution"},
         {
             og.Controller.Keys.CREATE_NODES: [
                 ("ros2_context", "omni.isaac.ros2_bridge.ROS2Context"),
@@ -27,14 +27,17 @@ class OmniGraphs:
                 ("ros2_context.outputs:context", "camera_publish_image.inputs:context"),
                 ("ros2_qos_profile.outputs:qosProfile", "camera_publish_image.inputs:qosProfile"),
                 ("isaac_create_render_product.outputs:execOut", "camera_publish_image.inputs:execIn"),
+                ("isaac_create_render_product.outputs:renderProductPath","camera_publish_image.inputs:renderProductPath"),
                 # camera_publish_depth inputs
                 ("ros2_context.outputs:context", "camera_publish_depth.inputs:context"),
                 ("ros2_qos_profile.outputs:qosProfile", "camera_publish_depth.inputs:qosProfile"),
                 ("isaac_create_render_product.outputs:execOut", "camera_publish_depth.inputs:execIn"),
+                ("isaac_create_render_product.outputs:renderProductPath","camera_publish_depth.inputs:renderProductPath"),
                 # ros2_camera_info_helper inputs
                 ("ros2_context.outputs:context", "ros2_camera_info_helper.inputs:context"),
                 ("ros2_qos_profile.outputs:qosProfile", "ros2_camera_info_helper.inputs:qosProfile"),
                 ("isaac_create_render_product.outputs:execOut", "ros2_camera_info_helper.inputs:execIn"),
+                ("isaac_create_render_product.outputs:renderProductPath","ros2_camera_info_helper.inputs:renderProductPath"),
             ],
             og.Controller.Keys.SET_VALUES: [
                 # camera_publish_image inputs
@@ -89,25 +92,30 @@ class OmniGraphs:
                 ("ros2_context.outputs:context", "left_camera_publish_image.inputs:context"),
                 ("ros2_qos_profile.outputs:qosProfile", "left_camera_publish_image.inputs:qosProfile"),
                 ("left_camera_render_product.outputs:execOut", "left_camera_publish_image.inputs:execIn"),
+                ("left_camera_render_product.outputs:renderProductPath","left_camera_publish_image.inputs:renderProductPath"),
                 # left_camera_publish_depth inputs
                 ("camera_namespace.inputs:value", "left_camera_publish_depth.inputs:nodeNamespace"),
                 ("left_camera_frame_id.inputs:value", "left_camera_publish_depth.inputs:frameId"),
                 ("ros2_context.outputs:context", "left_camera_publish_depth.inputs:context"),
                 ("ros2_qos_profile.outputs:qosProfile", "left_camera_publish_depth.inputs:qosProfile"),
                 ("left_camera_render_product.outputs:execOut", "left_camera_publish_depth.inputs:execIn"),
+                ("left_camera_render_product.outputs:renderProductPath","left_camera_publish_depth.inputs:renderProductPath"),
                 # right_camera_publish_image inputs
                 ("camera_namespace.inputs:value", "right_camera_publish_image.inputs:nodeNamespace"),
                 ("right_camera_frame_id.inputs:value", "right_camera_publish_image.inputs:frameId"),
                 ("ros2_context.outputs:context", "right_camera_publish_image.inputs:context"),
                 ("ros2_qos_profile.outputs:qosProfile", "right_camera_publish_image.inputs:qosProfile"),
                 ("right_camera_render_product.outputs:execOut", "right_camera_publish_image.inputs:execIn"),
+                ("right_camera_render_product.outputs:renderProductPath","right_camera_publish_image.inputs:renderProductPath"),
                 # ros2_camera_info_helper inputs
                 ("camera_namespace.inputs:value", "ros2_camera_info_helper.inputs:nodeNamespace"),
                 ("ros2_context.outputs:context", "ros2_camera_info_helper.inputs:context"),
                 ("ros2_qos_profile.outputs:qosProfile", "ros2_camera_info_helper.inputs:qosProfile"),
                 ("left_camera_render_product.outputs:execOut", "ros2_camera_info_helper.inputs:execIn"),
+                ("left_camera_render_product.outputs:renderProductPath","ros2_camera_info_helper.inputs:renderProductPath"),
                 ("left_camera_frame_id.inputs:value", "ros2_camera_info_helper.inputs:frameId"),
                 ("right_camera_render_product.outputs:execOut", "ros2_camera_info_helper.inputs:execIn"),
+                ("right_camera_render_product.outputs:renderProductPath","ros2_camera_info_helper.inputs:renderProductPathRight"),
                 ("right_camera_frame_id.inputs:value", "ros2_camera_info_helper.inputs:frameIdRight"),
             ],
             og.Controller.Keys.SET_VALUES: [
@@ -142,7 +150,7 @@ class OmniGraphs:
     )
         
     @staticmethod
-    def lidar_graph(prim_path, lidar, topic_name):
+    def lidar_graph(prim_path, lidar_prim_path, namespace):
         og.Controller.edit(
             {"graph_path": f"{prim_path}/ros_lidar", "evaluator_name": "execution"},
             {
@@ -165,18 +173,18 @@ class OmniGraphs:
                 ],
                 og.Controller.Keys.SET_VALUES: [
                     # rtx_lidar inputs
-                    ("rtx_lidar.inputs:topicName", f"{topic_name}"),
+                    ("rtx_lidar.inputs:topicName", "/point_cloud"),
                     ("rtx_lidar.inputs:type", "point_cloud"),
                     ("rtx_lidar.inputs:frameId", "lidar_frame"),
                     ("rtx_lidar.inputs:fullScan", True),
                     # isaac_create_render_product inputs
-                    ("isaac_create_render_product.inputs:cameraPrim",f"{prims_utils.get_prim_path(lidar)}"),
+                    ("isaac_create_render_product.inputs:cameraPrim",f"{lidar_prim_path}",),
                 ],
             },
         )
         
     @staticmethod
-    def tf_graph(prim_path, base_link_prim, sensor_prims, body_prim, topic_prefix):
+    def tf_graph(prim_path, base_link_prim, sensor_prims, body_prim_path, topic_prefix):
         og.Controller.edit(
             {"graph_path": f"{prim_path}/transform_tree_odometry", "evaluator_name": "execution"},
             {
@@ -228,9 +236,9 @@ class OmniGraphs:
                     ("tf_tree_base_link_to_sensors.inputs:targetPrims", [f"{prims}" for prims in sensor_prims]),
                     # tf_tree_base_link_to_body inputs
                     ("tf_tree_base_link_to_body.inputs:parentPrim", f"{base_link_prim}"),
-                    ("tf_tree_base_link_to_body.inputs:targetPrims", f"{body_prim}"),
+                    ("tf_tree_base_link_to_body.inputs:targetPrims", f"{body_prim_path}"),
                     # # isaac_compute_odometry_node inputs
-                    ("isaac_compute_odometry_node.inputs:chassisPrim", f"{body_prim}"),
+                    ("isaac_compute_odometry_node.inputs:chassisPrim", f"{body_prim_path}"),
                     # ros2_publish_odometry inputs
                     ("ros2_publish_odometry.inputs:topicName", f"{topic_prefix}/odom"),
                 ],

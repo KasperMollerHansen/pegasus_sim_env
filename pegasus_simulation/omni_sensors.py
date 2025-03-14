@@ -1,3 +1,5 @@
+import omni
+from pxr import Gf
 from omni.isaac.core.prims import XFormPrim
 from omni.isaac.sensor import Camera
 
@@ -5,11 +7,14 @@ from omni_graphs import OmniGraphs
 
 class StereoCamera():
 
-    def __init__(self, topic_prefix, drone_prim_path, vehicle_id:int=0, resolution:tuple=(640, 480)):
+    def __init__(self, topic_prefix, drone_prim_path, vehicle_id:int=0, translation:tuple=(0.0,0.0,0.0),orientation:tuple=(1.0, 0.0, 0.0, 0.0),distance_between_cameras:float=0.1, resolution:tuple=(640, 480)):
         self.topic_prefix = topic_prefix
         self.drone_prim_path = drone_prim_path
         self.body_prim_path = drone_prim_path + "/body"
         self.vehicle_id = vehicle_id
+        self.translation = translation
+        self.orientation = orientation
+        self.delta_cam = distance_between_cameras/2
         self.resolution = resolution
 
         self.omni_graphs = OmniGraphs()
@@ -21,21 +26,23 @@ class StereoCamera():
     def _initialize_camera(self):
         stereo_prim = XFormPrim(
             prim_path = self.body_prim_path + "/stereo_camera",
-            translation = (0.1, 0.0, 0.25),
+            translation = self.translation,
+            orientation = self.orientation,
         )
         left_prim = XFormPrim(
             prim_path = stereo_prim.prim_path + "/left",
-            translation = (0.0, 0.05, 0.0),
+            translation = (0.0, self.delta_cam, 0.0),
         )
         right_prim = XFormPrim(
             prim_path = stereo_prim.prim_path + "/right",
-            translation = (0.0, -0.05, 0.0),
+            translation = (0.0, -self.delta_cam, 0.0),
         )
         left_camera = Camera(
             prim_path=left_prim.prim_path + "/camera_left",
             resolution=self.resolution,
             translation=(0, 0, 0.0),
         )
+        left_camera.set_focal_length(15/10)
         right_camera = Camera(
             prim_path=right_prim.prim_path + "/camera_right",
             resolution=self.resolution,
@@ -58,4 +65,47 @@ class StereoCamera():
         self.omni_graphs.stereo_camera_graph(prim_path, namespace, self.camera_prims, self.camera_frame_ids, self.resolution)
         return
         
+class RTXLidar():
 
+    def __init__(self, topic_prefix, drone_prim_path, vehicle_id:int=0, translation:tuple=(0.0,0.0,0.0),orientation:tuple=(1.0, 0.0, 0.0, 0.0)):
+        self.topic_prefix = topic_prefix
+        self.drone_prim_path = drone_prim_path
+        self.vehicle_id = vehicle_id
+        self.translation = translation
+        self.orientation = orientation
+
+        self.omni_graphs = OmniGraphs()
+
+        self._initialize_lidar()
+        self._publish_lidar()
+        return
+        
+    def _initialize_lidar(self):
+        lidar_frame = XFormPrim(
+            prim_path=self.drone_prim_path + "/lidar",
+            translation = self.translation,
+            orientation = self.orientation,
+        )
+
+        lidar_config = "OS1_REV7_128ch10hz1024res"
+
+        _, self.lidar = omni.kit.commands.execute(
+            "IsaacSensorCreateRtxLidar",
+            path=lidar_frame.prim_path + "/rtx_lidar",
+            config=lidar_config,
+            orientation=Gf.Quatd(*self.orientation),
+        )
+        return
+    
+    def _publish_lidar(self):
+        if self.vehicle_id == 0:
+            namespace = self.topic_prefix + "/lidar"
+        else:
+            namespace = self.topic_prefix + f"/lidar_{self.vehicle_id}"
+        prim_path = self.drone_prim_path
+
+        self.omni_graphs.lidar_graph(prim_path, self.lidar, namespace)
+        return
+
+
+        
