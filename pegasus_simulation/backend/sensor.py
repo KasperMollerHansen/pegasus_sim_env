@@ -2,10 +2,8 @@ import omni
 from pxr import Gf
 from omni.isaac.core.prims import XFormPrim
 from omni.isaac.sensor import Camera
-import omni.isaac.core.utils.numpy.rotations as rot_utils
-import numpy as np
 
-from omni_graphs import OmniGraphs
+from backend.omni_graphs import OmniGraphs
 
 class StereoCamera():
 

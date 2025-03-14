@@ -13,7 +13,6 @@ import omni.isaac.core.utils.prims as prims_utils
 from omni.isaac.core import World
 from omni.isaac.core.utils.stage import add_reference_to_stage
 from omni.isaac.core.prims import XFormPrim
-from omni.isaac.sensor import Camera
 from omni.isaac.core.utils.extensions import enable_extension
 
 
@@ -26,8 +25,9 @@ from pegasus.simulator.logic.backends.px4_mavlink_backend import (
 from pegasus.simulator.logic.vehicles.multirotor import Multirotor, MultirotorConfig
 from pegasus.simulator.logic.interface.pegasus_interface import PegasusInterface
 
-from omni_graphs import OmniGraphs
-from omni_sensors import StereoCamera, RTXLidar
+from backend.omni_graphs import OmniGraphs
+from backend.sensor import StereoCamera, RTXLidar
+from backend.ros_publishers import ClockPublisher, TfPublisher
 
 import numpy as np
 from scipy.spatial.transform import Rotation
@@ -56,7 +56,7 @@ class PegasusApp:
 
     def setup_scene(self):
         self.world.scene.add_default_ground_plane()
-        self._publish_clock()
+        ClockPublisher()
         self._spawn_ground_plane(scale=[500, 500, 500])
         self._spawn_light()
         self._spawn_windturbine(position=[-5, 0, -0.25])
@@ -139,46 +139,8 @@ class PegasusApp:
                 vehicle_id=vehicle_id,
                 translation=(0.0, 0.0, 0.25),
             )
-        self._publish_tf(drone_prim_path)
+        TfPublisher(self.topic_prefix, drone_prim_path, self.default_body_children)
         return
-
-    def _publish_tf(self, drone_prim_path):
-        topic_prefix = self.topic_prefix
-        prim_path = drone_prim_path
-        body_prim_path = prim_path + "/body"
-        base_link_prim = XFormPrim(body_prim_path + "/base_link")
-        base_link_prim_path = base_link_prim.prim_path
-
-        body_children = self._remove_default_children(body_prim_path, self.default_body_children)
-        if body_children:
-            sensor_prims = self._get_all_children(body_children)
-        else:
-            sensor_prims = []
-        self.omni_graphs.tf_graph(prim_path, base_link_prim_path, sensor_prims, body_prim_path, topic_prefix)
-        return
-    
-    def _remove_default_children(self, prim_path, default_children):
-        prim = prims_utils.get_prim_at_path(prim_path)
-        children = prims_utils.get_prim_children(prim)
-        filtered_children = [child for child in children if child.GetName() not in default_children]
-        return filtered_children
-
-    @staticmethod
-    def _get_all_children(prims: list):
-        idx = 0
-        children_len = 0
-        children = prims
-        while len(children) > children_len:
-            children_len = len(children)
-            for i in range(idx, len(children)):
-                children += prims_utils.get_prim_children(children[i])
-                idx += 1
-        children_path = [str(prim.GetPath()) for prim in children]
-        return children_path
-        
-    def _publish_clock(self):
-        topic_name = "/clock"
-        self.omni_graphs.clock_graph(topic_name)
 
     def run(self):
         self.timeline.play()
