@@ -70,6 +70,7 @@ class RTXLidar():
     def __init__(self, topic_prefix, drone_prim_path, vehicle_id:int=0, translation:tuple=(0.0,0.0,0.0),orientation:tuple=(1.0, 0.0, 0.0, 0.0)):
         self.topic_prefix = topic_prefix
         self.drone_prim_path = drone_prim_path
+        self.body_prim_path = drone_prim_path + "/body"
         self.vehicle_id = vehicle_id
         self.translation = translation
         self.orientation = orientation
@@ -82,7 +83,7 @@ class RTXLidar():
         
     def _initialize_lidar(self):
         lidar_frame = XFormPrim(
-            prim_path=self.drone_prim_path + "/lidar",
+            prim_path=self.body_prim_path + "/lidar",
             translation = self.translation,
             orientation = self.orientation,
         )
@@ -95,6 +96,7 @@ class RTXLidar():
             config=lidar_config,
             orientation=Gf.Quatd(*self.orientation),
         )
+        self.lidar_id = "rtx_lidar"
         return
     
     def _publish_lidar(self):
@@ -103,8 +105,9 @@ class RTXLidar():
         else:
             namespace = self.topic_prefix + f"/lidar_{self.vehicle_id}"
         prim_path = self.drone_prim_path
+        lidar_prim_path = str(self.lidar.GetPath())
 
-        self.omni_graphs.lidar_graph(prim_path, self.lidar, namespace)
+        self.omni_graphs.lidar_graph(prim_path, namespace, lidar_prim_path, self.lidar_id)
         return
 
 

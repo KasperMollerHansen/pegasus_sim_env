@@ -150,7 +150,7 @@ class OmniGraphs:
     )
         
     @staticmethod
-    def lidar_graph(prim_path, lidar_prim_path, namespace):
+    def lidar_graph(prim_path, namespace, lidar_prim_path, lidar_id):
         og.Controller.edit(
             {"graph_path": f"{prim_path}/ros_lidar", "evaluator_name": "execution"},
             {
@@ -160,6 +160,7 @@ class OmniGraphs:
                     ("isaac_run_one_simulation_frame","omni.isaac.core_nodes.OgnIsaacRunOneSimulationFrame"),
                     ("isaac_create_render_product","omni.isaac.core_nodes.IsaacCreateRenderProduct"),
                     ("rtx_lidar", "omni.isaac.ros2_bridge.ROS2RtxLidarHelper"),
+                    ("lidar_namespace", "omni.graph.nodes.ConstantString"),
                 ],
                 og.Controller.Keys.CONNECT: [
                     # isaac_run_one_simulation_frame inputs
@@ -167,15 +168,18 @@ class OmniGraphs:
                     # isaac_create_render_product inputs
                     ("isaac_run_one_simulation_frame.outputs:step", "isaac_create_render_product.inputs:execIn"),
                     # rtx_lidar inputs
+                    ("lidar_namespace.inputs:value", "rtx_lidar.inputs:nodeNamespace"),
                     ("isaac_create_render_product.outputs:execOut", "rtx_lidar.inputs:execIn"),
                     ("isaac_create_render_product.outputs:renderProductPath","rtx_lidar.inputs:renderProductPath"),
                     ("ros2_context.outputs:context", "rtx_lidar.inputs:context"),
                 ],
                 og.Controller.Keys.SET_VALUES: [
+                    # lida_namespace inputs
+                    ("lidar_namespace.inputs:value", f"{namespace}"),
                     # rtx_lidar inputs
                     ("rtx_lidar.inputs:topicName", "/point_cloud"),
                     ("rtx_lidar.inputs:type", "point_cloud"),
-                    ("rtx_lidar.inputs:frameId", "lidar_frame"),
+                    ("rtx_lidar.inputs:frameId", f"{lidar_id}"),
                     ("rtx_lidar.inputs:fullScan", True),
                     # isaac_create_render_product inputs
                     ("isaac_create_render_product.inputs:cameraPrim",f"{lidar_prim_path}",),

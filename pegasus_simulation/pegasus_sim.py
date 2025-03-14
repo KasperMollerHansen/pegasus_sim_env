@@ -123,7 +123,6 @@ class PegasusApp:
             config=config_multirotor,
         )
         
-        # Initialize Camera if enabled
         if camera:
             StereoCamera(
                 self.topic_prefix, 
@@ -142,55 +141,6 @@ class PegasusApp:
             )
         self._publish_tf(drone_prim_path)
         return
-
-    @staticmethod
-    def _initialize_camera(drone_prim_path, resolution=(640, 480)):
-        camera_prim = XFormPrim(
-            prim_path = drone_prim_path + "/body/camera_frame",
-            translation = (0.0, 0.0, 0.25),
-        )
-        camera = Camera(
-            prim_path=camera_prim.prim_path + "/camera",
-            resolution=resolution,
-            translation=(0, 0, 0.0),
-        )
-        return camera, camera_prim
-
-    @staticmethod
-    def _initialize_lidar(body_prim):
-        lidar_frame = XFormPrim(
-            prim_path=body_prim.prim_path + "/lidar_frame",
-            translation = (0.0, 0.0, 0.25),
-        )
-
-        lidar_config = "OS1_REV7_128ch10hz1024res"
-
-        _, lidar = omni.kit.commands.execute(
-            "IsaacSensorCreateRtxLidar",
-            path=lidar_frame.prim_path + "/lidar",
-            config=lidar_config,
-            orientation=Gf.Quatd(1.0, 0.0, 0.0, 0.0),  # Gf.Quatd is w,i,j,k
-        )
-        return lidar
-    
-    def _publish_camera(self, camera, vehicle_id):
-        frame_id = "camera_frame"
-        if vehicle_id == 0:
-            topic_name = self.topic_prefix + "/camera"
-        else:
-            topic_name = self.topic_prefix + f"/camera_{vehicle_id}"
-        prim_path = self.drone_prim_path
-        self.omni_graphs.camera_graph(prim_path, camera, topic_name, frame_id)
-        return
-   
-    def _publish_lidar(self, lidar, vehicle_id):
-        if vehicle_id == 0:
-            topic_name = self.topic_prefix + "/point_cloud"
-        else:
-            topic_name = self.topic_prefix + f"/point_cloud_{vehicle_id}"
-        prim_path = drone_prim_path
-        self.omni_graphs.lidar_graph(prim_path, lidar, topic_name)
-    
 
     def _publish_tf(self, drone_prim_path):
         topic_prefix = self.topic_prefix
@@ -226,7 +176,6 @@ class PegasusApp:
         children_path = [str(prim.GetPath()) for prim in children]
         return children_path
         
-
     def _publish_clock(self):
         topic_name = "/clock"
         self.omni_graphs.clock_graph(topic_name)
