@@ -127,7 +127,8 @@ class OmniGraphs:
                 ("right_camera_publish_image.inputs:topicName", f"/right/image"),
                 ("right_camera_publish_image.inputs:type", "rgb"),
                 # ros2_camera_info_helper inputs
-                ("ros2_camera_info_helper.inputs:topicName", f"/camera_info"),
+                ("ros2_camera_info_helper.inputs:topicName", "/left/camera_info"),
+                ("ros2_camera_info_helper.inputs:topicNameRight", "/right/camera_info"),
                 # isaac_create_render_product inputs
                 ("left_camera_render_product.inputs:cameraPrim", f"{camera_prims[0].prim_path}"),
                 ("left_camera_render_product.inputs:height", resolution[1]),
