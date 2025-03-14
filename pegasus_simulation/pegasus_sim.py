@@ -8,12 +8,13 @@ simulation_app = SimulationApp({"headless": False})
 from pxr import Gf, UsdLux, Sdf
 
 import omni
+import numpy as np
 import omni.isaac.core.utils.numpy.rotations as rot_utils
-import omni.isaac.core.utils.prims as prims_utils
 from omni.isaac.core import World
 from omni.isaac.core.utils.stage import add_reference_to_stage
 from omni.isaac.core.prims import XFormPrim
 from omni.isaac.core.utils.extensions import enable_extension
+from scipy.spatial.transform import Rotation
 
 
 # Import the Pegasus API for simulating drones
@@ -29,8 +30,9 @@ from backend.omni_graphs import OmniGraphs
 from backend.sensor import StereoCamera, RTXLidar
 from backend.ros_publishers import ClockPublisher, TfPublisher
 
-import numpy as np
-from scipy.spatial.transform import Rotation
+import os
+current_dir = os.path.dirname(os.path.abspath(__file__))
+os.environ["CONFIG_DIR"] = os.path.join(current_dir, "config/")
 
 enable_extension("omni.isaac.ros2_bridge")
 
@@ -82,7 +84,7 @@ class PegasusApp:
         XFormPrim(
             prim_path="/World/Windturbine",
             position=position,
-            scale=np.array([0.1, 0.1, 0.1]),  # Default scale is 100
+            scale=(0.1, 0.1, 0.1),  # Default scale is 100
             orientation=rot_utils.euler_angles_to_quats(
                 np.array([90.0, 0.0, 180.0]), degrees=True
             ),
@@ -125,11 +127,11 @@ class PegasusApp:
         
         if camera:
             StereoCamera(
-                self.topic_prefix, 
-                drone_prim_path, 
+                camera_config="stereo_camera.yaml",
+                topic_prefix=self.topic_prefix, 
+                drone_prim_path=drone_prim_path, 
                 vehicle_id=vehicle_id,
                 translation=(0.1, 0.0, 0.2), 
-                resolution=(640, 480)
             )
 
         if lidar:
