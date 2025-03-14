@@ -1,5 +1,4 @@
 import omni.graph.core as og
-import omni.isaac.core.utils.prims as prims_utils 
 
 class OmniGraphs:
 

@@ -2,6 +2,8 @@ import omni
 from pxr import Gf
 from omni.isaac.core.prims import XFormPrim
 from omni.isaac.sensor import Camera
+import omni.isaac.core.utils.numpy.rotations as rot_utils
+import numpy as np
 
 from omni_graphs import OmniGraphs
 
@@ -40,13 +42,10 @@ class StereoCamera():
         left_camera = Camera(
             prim_path=left_prim.prim_path + "/camera_left",
             resolution=self.resolution,
-            translation=(0, 0, 0.0),
         )
-        left_camera.set_focal_length(15/10)
         right_camera = Camera(
             prim_path=right_prim.prim_path + "/camera_right",
             resolution=self.resolution,
-            translation=(0, 0, 0.0),
         )
         left_camera.initialize()
         right_camera.initialize()
