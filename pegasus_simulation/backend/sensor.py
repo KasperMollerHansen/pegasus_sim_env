@@ -7,13 +7,11 @@ from typing import Literal
 
 from backend.omni_graphs import OmniGraphs
 
-import os
-
 class StereoCamera():
 
     def __init__(self, camera_config, topic_prefix, drone_prim_path, vehicle_id:int=0, translation:tuple=(0.0,0.0,0.0),orientation:tuple=(1.0, 0.0, 0.0, 0.0)):
-        config_dir = os.environ.get("CONFIG_DIR")
-        self.config_file =  config_dir + camera_config
+        self.camera_config = camera_config
+        self.resolution = (camera_config["resolution"]["width"], camera_config["resolution"]["height"])
         self.topic_prefix = topic_prefix
         self.drone_prim_path = drone_prim_path
         self.body_prim_path = drone_prim_path + "/body"
@@ -22,12 +20,12 @@ class StereoCamera():
         self.orientation = orientation
 
         self.omni_graphs = OmniGraphs()
-        self.camera_config = self._get_camera_config()
         self._initialize_camera()
         self._publish_camera()
         return
     
     def _initialize_camera(self):
+        c_c = self.camera_config
         stereo_prim = XFormPrim(
             prim_path = self.body_prim_path + "/stereo_camera",
             translation = self.translation,
@@ -35,15 +33,15 @@ class StereoCamera():
         )
         left_prim = XFormPrim(
             prim_path = stereo_prim.prim_path + "/left",
-            translation = (0.0, self.baseline/2, 0.0),
+            translation = (0.0, c_c["baseline"]/2, 0.0),
         )
         right_prim = XFormPrim(
             prim_path = stereo_prim.prim_path + "/right",
-            translation = (0.0, -self.baseline/2, 0.0),
+            translation = (0.0, -c_c["baseline"]/2, 0.0),
         )
         left_camera = Camera(
-            prim_path=left_prim.prim_path + "/camera_left",
-            resolution=self.resolution,
+            prim_path = left_prim.prim_path + "/camera_left",
+            resolution = self.resolution,
         )
         right_camera = Camera(
             prim_path=right_prim.prim_path + "/camera_right",
@@ -68,17 +66,6 @@ class StereoCamera():
         prim_path = self.drone_prim_path
         self.omni_graphs.stereo_camera_graph(prim_path, namespace, self.camera_prims, self.camera_frame_ids, self.resolution)
         return
-    
-    def _get_camera_config(self):
-        try:
-            with open(self.config_file, "r") as file:
-                config = yaml.safe_load(file)
-        except FileNotFoundError:
-            raise FileNotFoundError(f"File {self.config_file} not found")  
-        camera_config = config["camera"]
-        self.baseline = camera_config["baseline"]
-        self.resolution = (camera_config["resolution"]["width"], camera_config["resolution"]["height"])
-        return camera_config
     
     def _make_camera_config(self, camera, stereo_role:Literal["left", "right", "mono"]):
         c_c = self.camera_config

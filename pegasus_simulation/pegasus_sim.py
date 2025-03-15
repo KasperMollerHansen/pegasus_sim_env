@@ -7,6 +7,8 @@ simulation_app = SimulationApp({"headless": False})
 
 from pxr import Gf, UsdLux, Sdf
 
+import os
+import yaml
 import omni
 import numpy as np
 import omni.isaac.core.utils.numpy.rotations as rot_utils
@@ -29,10 +31,6 @@ from pegasus.simulator.logic.interface.pegasus_interface import PegasusInterface
 from backend.omni_graphs import OmniGraphs
 from backend.sensor import StereoCamera, RTXLidar
 from backend.ros_publishers import ClockPublisher, TfPublisher
-
-import os
-current_dir = os.path.dirname(os.path.abspath(__file__))
-os.environ["CONFIG_DIR"] = os.path.join(current_dir, "config/")
 
 enable_extension("omni.isaac.ros2_bridge")
 
@@ -124,10 +122,12 @@ class PegasusApp:
             Rotation.from_euler("XYZ", rotation, degrees=True).as_quat(),
             config=config_multirotor,
         )
+
+        config_file = self._load_config_file("sensor_config.yaml")
         
         if camera:
             StereoCamera(
-                camera_config="stereo_camera.yaml",
+                camera_config=config_file["stereo_camera"],
                 topic_prefix=self.topic_prefix, 
                 drone_prim_path=drone_prim_path, 
                 vehicle_id=vehicle_id,
@@ -143,6 +143,18 @@ class PegasusApp:
             )
         TfPublisher(self.topic_prefix, drone_prim_path, self.default_body_children)
         return
+
+    @staticmethod
+    def _load_config_file(file_name):
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+        config_dir = os.path.join(current_dir, "config/")
+        config_file_path = config_dir + file_name
+        try:
+            with open(config_file_path, "r") as file:
+                config = yaml.safe_load(file)
+        except FileNotFoundError:
+            raise FileNotFoundError(f"File {config_file_path} not found")
+        return config  
 
     def run(self):
         self.timeline.play()
