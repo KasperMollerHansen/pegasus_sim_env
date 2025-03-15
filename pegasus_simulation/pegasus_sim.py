@@ -7,14 +7,16 @@ simulation_app = SimulationApp({"headless": False})
 
 from pxr import Gf, UsdLux, Sdf
 
+import os
+import yaml
 import omni
+import numpy as np
 import omni.isaac.core.utils.numpy.rotations as rot_utils
-import omni.isaac.core.utils.prims as prims_utils
 from omni.isaac.core import World
 from omni.isaac.core.utils.stage import add_reference_to_stage
 from omni.isaac.core.prims import XFormPrim
-from omni.isaac.sensor import Camera
 from omni.isaac.core.utils.extensions import enable_extension
+from scipy.spatial.transform import Rotation
 
 
 # Import the Pegasus API for simulating drones
@@ -26,11 +28,9 @@ from pegasus.simulator.logic.backends.px4_mavlink_backend import (
 from pegasus.simulator.logic.vehicles.multirotor import Multirotor, MultirotorConfig
 from pegasus.simulator.logic.interface.pegasus_interface import PegasusInterface
 
-from omni_graphs import OmniGraphs
-from omni_sensors import StereoCamera, RTXLidar
-
-import numpy as np
-from scipy.spatial.transform import Rotation
+from backend.omni_graphs import OmniGraphs
+from backend.sensor import StereoCamera, RTXLidar
+from backend.ros_publishers import ClockPublisher, TfPublisher
 
 enable_extension("omni.isaac.ros2_bridge")
 
@@ -56,7 +56,7 @@ class PegasusApp:
 
     def setup_scene(self):
         self.world.scene.add_default_ground_plane()
-        self._publish_clock()
+        ClockPublisher()
         self._spawn_ground_plane(scale=[500, 500, 500])
         self._spawn_light()
         self._spawn_windturbine(position=[-5, 0, -0.25])
@@ -82,7 +82,7 @@ class PegasusApp:
         XFormPrim(
             prim_path="/World/Windturbine",
             position=position,
-            scale=np.array([0.1, 0.1, 0.1]),  # Default scale is 100
+            scale=(0.1, 0.1, 0.1),  # Default scale is 100
             orientation=rot_utils.euler_angles_to_quats(
                 np.array([90.0, 0.0, 180.0]), degrees=True
             ),
@@ -122,14 +122,16 @@ class PegasusApp:
             Rotation.from_euler("XYZ", rotation, degrees=True).as_quat(),
             config=config_multirotor,
         )
+
+        config_file = self._load_config_file("sensor_config.yaml")
         
         if camera:
             StereoCamera(
-                self.topic_prefix, 
-                drone_prim_path, 
+                camera_config=config_file["stereo_camera"],
+                topic_prefix=self.topic_prefix, 
+                drone_prim_path=drone_prim_path, 
                 vehicle_id=vehicle_id,
                 translation=(0.1, 0.0, 0.2), 
-                resolution=(640, 480)
             )
 
         if lidar:
@@ -139,46 +141,20 @@ class PegasusApp:
                 vehicle_id=vehicle_id,
                 translation=(0.0, 0.0, 0.25),
             )
-        self._publish_tf(drone_prim_path)
+        TfPublisher(self.topic_prefix, drone_prim_path, self.default_body_children)
         return
-
-    def _publish_tf(self, drone_prim_path):
-        topic_prefix = self.topic_prefix
-        prim_path = drone_prim_path
-        body_prim_path = prim_path + "/body"
-        base_link_prim = XFormPrim(body_prim_path + "/base_link")
-        base_link_prim_path = base_link_prim.prim_path
-
-        body_children = self._remove_default_children(body_prim_path, self.default_body_children)
-        if body_children:
-            sensor_prims = self._get_all_children(body_children)
-        else:
-            sensor_prims = []
-        self.omni_graphs.tf_graph(prim_path, base_link_prim_path, sensor_prims, body_prim_path, topic_prefix)
-        return
-    
-    def _remove_default_children(self, prim_path, default_children):
-        prim = prims_utils.get_prim_at_path(prim_path)
-        children = prims_utils.get_prim_children(prim)
-        filtered_children = [child for child in children if child.GetName() not in default_children]
-        return filtered_children
 
     @staticmethod
-    def _get_all_children(prims: list):
-        idx = 0
-        children_len = 0
-        children = prims
-        while len(children) > children_len:
-            children_len = len(children)
-            for i in range(idx, len(children)):
-                children += prims_utils.get_prim_children(children[i])
-                idx += 1
-        children_path = [str(prim.GetPath()) for prim in children]
-        return children_path
-        
-    def _publish_clock(self):
-        topic_name = "/clock"
-        self.omni_graphs.clock_graph(topic_name)
+    def _load_config_file(file_name):
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+        config_dir = os.path.join(current_dir, "config/")
+        config_file_path = config_dir + file_name
+        try:
+            with open(config_file_path, "r") as file:
+                config = yaml.safe_load(file)
+        except FileNotFoundError:
+            raise FileNotFoundError(f"File {config_file_path} not found")
+        return config  
 
     def run(self):
         self.timeline.play()

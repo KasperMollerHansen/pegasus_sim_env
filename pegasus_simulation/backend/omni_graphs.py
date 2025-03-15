@@ -1,5 +1,4 @@
 import omni.graph.core as og
-import omni.isaac.core.utils.prims as prims_utils 
 
 class OmniGraphs:
 
@@ -126,21 +125,22 @@ class OmniGraphs:
                 # right_camera_frame_id inputs
                 ("right_camera_frame_id.inputs:value", f"{camera_frame_ids[1]}"),
                 # left_camera_publish_image inputs
-                ("left_camera_publish_image.inputs:topicName", f"/left/image"),
+                ("left_camera_publish_image.inputs:topicName", f"left/image"),
                 ("left_camera_publish_image.inputs:type", "rgb"),
                 # left_camera_publish_depth inputs
-                ("left_camera_publish_depth.inputs:topicName", f"/left/depth"),
+                ("left_camera_publish_depth.inputs:topicName", f"left/depth"),
                 ("left_camera_publish_depth.inputs:type", "depth"),
                 # right_camera_publish_image inputs
-                ("right_camera_publish_image.inputs:topicName", f"/right/image"),
+                ("right_camera_publish_image.inputs:topicName", f"right/image"),
                 ("right_camera_publish_image.inputs:type", "rgb"),
                 # ros2_camera_info_helper inputs
-                ("ros2_camera_info_helper.inputs:topicName", "/left/camera_info"),
-                ("ros2_camera_info_helper.inputs:topicNameRight", "/right/camera_info"),
-                # isaac_create_render_product inputs
+                ("ros2_camera_info_helper.inputs:topicName", "left/camera_info"),
+                ("ros2_camera_info_helper.inputs:topicNameRight", "right/camera_info"),
+                # left_camera_render_product inputs
                 ("left_camera_render_product.inputs:cameraPrim", f"{camera_prims[0].prim_path}"),
                 ("left_camera_render_product.inputs:height", resolution[1]),
                 ("left_camera_render_product.inputs:width", resolution[0]),
+                # right_camera_render_product inputs
                 ("right_camera_render_product.inputs:cameraPrim", f"{camera_prims[1].prim_path}"),
                 ("right_camera_render_product.inputs:height", resolution[1]),
                 ("right_camera_render_product.inputs:width", resolution[0]),
@@ -177,7 +177,7 @@ class OmniGraphs:
                     # lida_namespace inputs
                     ("lidar_namespace.inputs:value", f"{namespace}"),
                     # rtx_lidar inputs
-                    ("rtx_lidar.inputs:topicName", "/point_cloud"),
+                    ("rtx_lidar.inputs:topicName", "point_cloud"),
                     ("rtx_lidar.inputs:type", "point_cloud"),
                     ("rtx_lidar.inputs:frameId", f"{lidar_id}"),
                     ("rtx_lidar.inputs:fullScan", True),
@@ -202,6 +202,7 @@ class OmniGraphs:
                     ("isaac_compute_odometry_node", "omni.isaac.core_nodes.IsaacComputeOdometry"),
                     ("ros2_publish_odometry", "omni.isaac.ros2_bridge.ROS2PublishOdometry"),
                     ("ros2_publish_raw_transform_tree", "omni.isaac.ros2_bridge.ROS2PublishRawTransformTree"),
+                    ("tf_namespace", "omni.graph.nodes.ConstantString"),
                 ],
                 og.Controller.Keys.CONNECT: [
                     # tf_tree_base_link_to_sensors inputs
@@ -217,6 +218,7 @@ class OmniGraphs:
                     # isaac_compute_odometry_node inputs
                     ("on_playback_tick.outputs:tick", "isaac_compute_odometry_node.inputs:execIn"),
                     # ros2_publish_odometry inputs
+                    ("tf_namespace.inputs:value", "ros2_publish_odometry.inputs:nodeNamespace"),
                     ("on_playback_tick.outputs:tick", "ros2_publish_odometry.inputs:execIn"),
                     ("ros2_context.outputs:context", "ros2_publish_odometry.inputs:context"),
                     ("ros2_qos_profile.outputs:qosProfile", "ros2_publish_odometry.inputs:qosProfile"),
@@ -235,6 +237,8 @@ class OmniGraphs:
                                      
                 ],
                 og.Controller.Keys.SET_VALUES: [
+                    # tf_namespace inputs
+                    ("tf_namespace.inputs:value", f"{topic_prefix}"),
                     # tf_tree_base_link_to_sensors inputs
                     ("tf_tree_base_link_to_sensors.inputs:parentPrim", f"{base_link_prim}"),
                     ("tf_tree_base_link_to_sensors.inputs:targetPrims", [f"{prims}" for prims in sensor_prims]),
@@ -244,7 +248,7 @@ class OmniGraphs:
                     # # isaac_compute_odometry_node inputs
                     ("isaac_compute_odometry_node.inputs:chassisPrim", f"{body_prim_path}"),
                     # ros2_publish_odometry inputs
-                    ("ros2_publish_odometry.inputs:topicName", f"{topic_prefix}/odom"),
+                    ("ros2_publish_odometry.inputs:topicName", "odom"),
                 ],
 
             },
