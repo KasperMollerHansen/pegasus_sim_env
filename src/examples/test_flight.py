@@ -92,7 +92,7 @@ class TestFlight(Node):
 
     def timer_callback(self) -> None:
         position = self.coordinates[self.current_checkpoint]
-        yaw = 180.0
+        yaw = np.deg2rad(180.0)
         self.publish_position_setpoint(position, yaw)
         self.update_coordinates()
 

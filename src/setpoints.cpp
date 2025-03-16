@@ -121,7 +121,7 @@ void OffboardControl::publish_trajectory_setpoint(const TrajectorySetpoint::Shar
                     -received_msg->position[2]}; // -z
 
     // Transform yaw: yaw -> -yaw
-    msg.yaw = -received_msg->yaw;
+    msg.yaw = -received_msg->yaw + M_PI / 2.0;
 
     // Update the timestamp to the current time
     msg.timestamp = this->get_clock()->now().nanoseconds() / 1000;
