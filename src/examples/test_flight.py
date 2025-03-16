@@ -54,9 +54,10 @@ class TestFlight(Node):
         self.takeoff_height = -5.0
         self.current_checkpoint = 0
         self.coordinates = [
+            [-2.0, 0.0, 10.0],
+            [-2.0, 0.0, 20.0],
             [0.0, 0.0, 50.0],
-            [-3.0, 0.0, 55.0],
-            [-10.0, 10.0, 55.0],
+            [-2.0, 0.0, 30.0],
             [0.0, 0.0, 1.0],
         ]
 

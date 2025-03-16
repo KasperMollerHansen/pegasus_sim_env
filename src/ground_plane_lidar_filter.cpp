@@ -14,7 +14,7 @@ public:
     {
         // Create a subscriber for the PointCloud2 topic
         cloud_subscriber_ = this->create_subscription<sensor_msgs::msg::PointCloud2>(
-            "/isaac/lidar/pointcloud", rclcpp::SensorDataQoS(), 
+            "/isaac/lidar/raw/pointcloud", rclcpp::SensorDataQoS(), 
             std::bind(&GroundPlaneFilterNode::pointCloudCallback, this, std::placeholders::_1));
 
         // Create a publisher for the filtered PointCloud2

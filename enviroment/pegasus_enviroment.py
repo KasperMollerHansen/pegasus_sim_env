@@ -61,7 +61,7 @@ class PegasusApp:
         self._spawn_ground_plane(scale=[500, 500, 500])
         self._spawn_light()
         self._spawn_windturbine(position=[-5, 0, -0.25], filename="windturbine.usdc")
-        self._spawn_quadrotor(position=[1, 0, 0], rotation=[0, 0, 0], vehicle_id=0)
+        self._spawn_quadrotor(position=[0, 0, 0], rotation=[0, 0, 0], vehicle_id=0)
 
     @staticmethod
     def _spawn_ground_plane(scale=[1000, 1000, 1000]):
