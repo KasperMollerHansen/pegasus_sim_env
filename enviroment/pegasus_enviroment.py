@@ -39,6 +39,7 @@ simulation_app.update()
 
 class PegasusApp:
     def __init__(self):
+        self.working_dir = os.path.dirname(os.path.abspath(__file__))
         self.default_body_children = {"body", "base_link", "Looks"}
 
         self.omni_graphs = OmniGraphs()
@@ -59,7 +60,7 @@ class PegasusApp:
         ClockPublisher()
         self._spawn_ground_plane(scale=[500, 500, 500])
         self._spawn_light()
-        self._spawn_windturbine(position=[-5, 0, -0.25])
+        self._spawn_windturbine(position=[-5, 0, -0.25], filename="windturbine.usdc")
         self._spawn_quadrotor(position=[1, 0, 0], rotation=[0, 0, 0], vehicle_id=0)
 
     @staticmethod
@@ -74,8 +75,9 @@ class PegasusApp:
         light.AddTranslateOp().Set(Gf.Vec3f(1000.0, 1000.0, 1000.0))
         return
 
-    def _spawn_windturbine(self, position=[0.0, 0.0, -0.25]):
-        windturbine_path = "pegasus_simulation/data/windturbine.usdc"
+    def _spawn_windturbine(self, position=[0.0, 0.0, -0.25], filename="windturbine.usdc"):
+        data_dir = os.path.join(self.working_dir, "data/")
+        windturbine_path = data_dir + filename
         add_reference_to_stage(
             usd_path=windturbine_path, prim_path="/World/Windturbine"
         )
@@ -144,10 +146,8 @@ class PegasusApp:
         TfPublisher(self.topic_prefix, drone_prim_path, self.default_body_children)
         return
 
-    @staticmethod
-    def _load_config_file(file_name):
-        current_dir = os.path.dirname(os.path.abspath(__file__))
-        config_dir = os.path.join(current_dir, "config/")
+    def _load_config_file(self, file_name):
+        config_dir = os.path.join(self.working_dir, "config/")
         config_file_path = config_dir + file_name
         try:
             with open(config_file_path, "r") as file:

@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.10)
-project(sim_px4_ros2)
+project(pegasus_sim_env)
 
 # Set the required CMake version
 cmake_minimum_required(VERSION 3.10)
