@@ -60,6 +60,7 @@ class TestFlight(Node):
             [-2.0, 0.0, 30.0],
             [0.0, 0.0, 1.0],
         ]
+        self.yaw = 180.0
 
         # Create a timer to publish control commands
         self.timer = self.create_timer(0.1, self.timer_callback)
@@ -93,7 +94,7 @@ class TestFlight(Node):
 
     def timer_callback(self) -> None:
         position = self.coordinates[self.current_checkpoint]
-        yaw = np.deg2rad(180.0)
+        yaw = np.deg2rad(self.yaw)
         self.publish_position_setpoint(position, yaw)
         self.update_coordinates()
 
