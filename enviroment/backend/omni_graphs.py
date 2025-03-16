@@ -177,7 +177,7 @@ class OmniGraphs:
                     # lida_namespace inputs
                     ("lidar_namespace.inputs:value", f"{namespace}"),
                     # rtx_lidar inputs
-                    ("rtx_lidar.inputs:topicName", "point_cloud"),
+                    ("rtx_lidar.inputs:topicName", "pointcloud"),
                     ("rtx_lidar.inputs:type", "point_cloud"),
                     ("rtx_lidar.inputs:frameId", f"{lidar_id}"),
                     ("rtx_lidar.inputs:fullScan", True),

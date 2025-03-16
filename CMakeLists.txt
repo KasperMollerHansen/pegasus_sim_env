@@ -21,25 +21,36 @@ endif()
 # find dependencies
 find_package(ament_cmake REQUIRED)
 find_package(builtin_interfaces REQUIRED)
-find_package(eigen3_cmake_module REQUIRED)
-find_package(Eigen3 REQUIRED)
-find_package(geometry_msgs REQUIRED)
 find_package(px4_msgs REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(sensor_msgs REQUIRED)
 find_package(rclpy REQUIRED)
-
+find_package(PCL REQUIRED)
+find_package(pcl_conversions REQUIRED)
 
 # Include directories for your package
 include_directories(include)
 
 # Add executable for src/setpoints.cpp
 add_executable(setpoints_node src/setpoints.cpp)
-install(TARGETS setpoints_node
-    DESTINATION lib/${PROJECT_NAME}
+ament_target_dependencies(setpoints_node
+  rclcpp 
+  px4_msgs
+)
+add_executable(ground_plane_lidar_filter src/ground_plane_lidar_filter.cpp)
+ament_target_dependencies(ground_plane_lidar_filter
+  rclcpp
+  sensor_msgs
+  PCL
+  pcl_conversions
 )
 
-ament_target_dependencies(setpoints_node rclcpp px4_msgs)
+
+install(TARGETS 
+  setpoints_node 
+  ground_plane_lidar_filter
+  DESTINATION lib/${PROJECT_NAME}
+)
 
 # Build tests if required
 if(BUILD_TESTING)
