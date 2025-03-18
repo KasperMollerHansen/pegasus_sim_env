@@ -43,6 +43,7 @@ ament_target_dependencies(ground_plane_lidar_filter
   sensor_msgs
   PCL
   pcl_conversions
+  px4_msgs
 )
 
 
