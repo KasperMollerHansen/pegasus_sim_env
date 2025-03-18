@@ -13,11 +13,16 @@ conda activate $ISAAC_CONDA_ENV
 # Source the conda environment
 source $ISAACSIM_PATH/setup_conda_env.sh
 
+# Initialize the Micro XRCE-DDS Agent
+echo "Initializing Micro XRCE-DDS Agent..."
 MicroXRCEAgent udp4 -p 8888 &
+
+# Initialize the lidar filter
+ros2 run pegasus_sim_env lidar_filter_node &
 
 # Execute the Python script
 echo "Running Python script..."
-python enviroment/pegasus_enviroment.py
+python src/pegasus_sim_env/enviroment/pegasus_enviroment.py
 
 # Deactivate the conda environment
 conda deactivate
