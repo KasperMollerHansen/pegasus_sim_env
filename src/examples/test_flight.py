@@ -5,9 +5,7 @@ import numpy as np
 from rclpy.node import Node
 from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy, DurabilityPolicy
 from px4_msgs.msg import (
-    OffboardControlMode,
     TrajectorySetpoint,
-    VehicleCommand,
     VehicleOdometry,
     VehicleStatus,
 )
@@ -60,7 +58,7 @@ class TestFlight(Node):
             [-2.0, 0.0, 30.0],
             [0.0, 0.0, 1.0],
         ]
-        self.yaw = 180.0
+        self.yaw = 0.0
 
         # Create a timer to publish control commands
         self.timer = self.create_timer(0.1, self.timer_callback)

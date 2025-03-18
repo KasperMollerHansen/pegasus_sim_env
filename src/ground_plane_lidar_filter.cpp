@@ -53,7 +53,7 @@ void pointCloudCallback(const sensor_msgs::msg::PointCloud2::SharedPtr msg)
         if (point.z > -0.1 && point.z < 0.1)
             continue;
 
-        // Retain points within a 10-meter radius in the X-Y plane
+        // Retain points within a 5-meter radius in the X-Y plane
         double distance = std::hypot(point.x - current_position_.x, point.y - current_position_.y);
         if (distance <= 5.0)
         {
