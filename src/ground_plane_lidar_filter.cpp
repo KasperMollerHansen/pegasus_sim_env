@@ -30,37 +30,44 @@ public:
     }
 
 private:
-    void pointCloudCallback(const sensor_msgs::msg::PointCloud2::SharedPtr msg)
+void pointCloudCallback(const sensor_msgs::msg::PointCloud2::SharedPtr msg)
     {
-        // Convert ROS PointCloud2 to PCL PointCloud
-        pcl::PointCloud<pcl::PointXYZ>::Ptr pcl_cloud(new pcl::PointCloud<pcl::PointXYZ>);
-        pcl::fromROSMsg(*msg, *pcl_cloud);
+    // Convert ROS PointCloud2 to PCL PointCloud
+    pcl::PointCloud<pcl::PointXYZ>::Ptr pcl_cloud(new pcl::PointCloud<pcl::PointXYZ>);
+    pcl::fromROSMsg(*msg, *pcl_cloud);
 
-        // Create a new PointCloud for filtered points
-        pcl::PointCloud<pcl::PointXYZ>::Ptr filtered_cloud(new pcl::PointCloud<pcl::PointXYZ>);
+    // Create a new PointCloud for filtered points
+    pcl::PointCloud<pcl::PointXYZ>::Ptr filtered_cloud(new pcl::PointCloud<pcl::PointXYZ>);
 
-        // Apply filtering logic
-        for (const auto &point : pcl_cloud->points)
+    // Apply filtering logic
+    for (const auto &point : pcl_cloud->points)
+    {
+        // Discard points with NaN or 0 values in any coordinate
+        if (std::isnan(point.x) || std::isnan(point.y) || std::isnan(point.z) ||
+            point.x == 0.0 || point.y == 0.0 || point.z == 0.0)
         {
-            // Discard points with Z between -0.1 and 0.1
-            if (point.z > -0.1 && point.z < 0.1)
-                continue;
-
-            // Retain points within a 15-meter radius in the X-Y plane
-            double distance = std::hypot(point.x - current_position_.x, point.y - current_position_.y);
-            if (distance <= 15.0)
-            {
-                filtered_cloud->points.push_back(point);
-            }
+            continue;
         }
 
-        // Convert filtered PCL PointCloud back to ROS PointCloud2
-        sensor_msgs::msg::PointCloud2 filtered_msg;
-        pcl::toROSMsg(*filtered_cloud, filtered_msg);
-        filtered_msg.header = msg->header;
+        // Discard points with Z between -0.1 and 0.1 (assuming ground plane filter logic)
+        if (point.z > -0.1 && point.z < 0.1)
+            continue;
 
-        // Publish the filtered PointCloud
-        cloud_publisher_->publish(filtered_msg);
+        // Retain points within a 10-meter radius in the X-Y plane
+        double distance = std::hypot(point.x - current_position_.x, point.y - current_position_.y);
+        if (distance <= 5.0)
+        {
+            filtered_cloud->points.push_back(point);
+        }
+    }
+
+    // Convert filtered PCL PointCloud back to ROS PointCloud2
+    sensor_msgs::msg::PointCloud2 filtered_msg;
+    pcl::toROSMsg(*filtered_cloud, filtered_msg);
+    filtered_msg.header = msg->header;
+
+    // Publish the filtered PointCloud
+    cloud_publisher_->publish(filtered_msg);
     }
 
     void odometryCallback(const px4_msgs::msg::VehicleOdometry::SharedPtr msg)
