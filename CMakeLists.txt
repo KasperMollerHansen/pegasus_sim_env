@@ -18,6 +18,9 @@ if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
   add_compile_options(-Wall -Wextra -Wpedantic)
 endif()
 
+# set the path to the Eigen3 library
+set(EIGEN3_INCLUDE_DIR "/usr/include/eigen3")
+
 # find dependencies
 find_package(ament_cmake REQUIRED)
 find_package(builtin_interfaces REQUIRED)
@@ -37,8 +40,8 @@ ament_target_dependencies(setpoints_node
   rclcpp 
   px4_msgs
 )
-add_executable(ground_plane_lidar_filter src/ground_plane_lidar_filter.cpp)
-ament_target_dependencies(ground_plane_lidar_filter
+add_executable(lidar_filter_node src/ground_plane_lidar_filter.cpp)
+ament_target_dependencies(lidar_filter_node
   rclcpp
   sensor_msgs
   PCL
@@ -49,7 +52,7 @@ ament_target_dependencies(ground_plane_lidar_filter
 
 install(TARGETS 
   setpoints_node 
-  ground_plane_lidar_filter
+  lidar_filter_node
   DESTINATION lib/${PROJECT_NAME}
 )
 
