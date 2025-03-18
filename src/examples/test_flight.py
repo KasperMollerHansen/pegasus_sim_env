@@ -52,11 +52,18 @@ class TestFlight(Node):
         self.takeoff_height = -5.0
         self.current_checkpoint = 0
         self.coordinates = [
-            [-2.0, 0.0, 10.0],
-            [-2.0, 0.0, 20.0],
+            [0.0, 0.0, 5.0],
+            [0.0, 0.0, 10.0],
+            [0.0, 0.0, 20.0],
+            [0.0, 0.0, 30.0],
+            [0.0, 0.0, 40.0],
             [0.0, 0.0, 50.0],
-            [-2.0, 0.0, 30.0],
-            [0.0, 0.0, 1.0],
+            [0.0, 0.0, 40.0],
+            [0.0, 0.0, 30.0],
+            [0.0, 0.0, 20.0],
+            [0.0, 0.0, 10.0],
+            [0.0, 0.0, 5.0],
+            [0.0, 0.0, 0.0],
         ]
         self.yaw = 0.0
 
@@ -82,8 +89,9 @@ class TestFlight(Node):
         current = self.transform_position(current)
         target = np.array(target)
         current = np.array(current)
-        if np.linalg.norm(current - target) < 0.1:
+        if np.linalg.norm(current - target) < 0.5:
             self.current_checkpoint += 1
+            self.yaw += 45.0
 
     @staticmethod
     def transform_position(position: list):

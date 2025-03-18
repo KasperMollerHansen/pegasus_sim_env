@@ -12,7 +12,7 @@ using namespace std;
 class GroundPlaneFilterNode : public rclcpp::Node
 {
 public:
-    GroundPlaneFilterNode() : Node("ground_plane_filter_node")
+    GroundPlaneFilterNode() : Node("lidar_filter_node")
     {
         // Create a subscriber for the PointCloud2 topic
         cloud_subscriber_ = this->create_subscription<sensor_msgs::msg::PointCloud2>(
@@ -30,44 +30,58 @@ public:
     }
 
 private:
-void pointCloudCallback(const sensor_msgs::msg::PointCloud2::SharedPtr msg)
+    void pointCloudCallback(const sensor_msgs::msg::PointCloud2::SharedPtr msg)
     {
-    // Convert ROS PointCloud2 to PCL PointCloud
-    pcl::PointCloud<pcl::PointXYZ>::Ptr pcl_cloud(new pcl::PointCloud<pcl::PointXYZ>);
-    pcl::fromROSMsg(*msg, *pcl_cloud);
+        // Convert ROS PointCloud2 to PCL PointCloud
+        pcl::PointCloud<pcl::PointXYZ>::Ptr pcl_cloud(new pcl::PointCloud<pcl::PointXYZ>);
+        pcl::fromROSMsg(*msg, *pcl_cloud);
 
-    // Create a new PointCloud for filtered points
-    pcl::PointCloud<pcl::PointXYZ>::Ptr filtered_cloud(new pcl::PointCloud<pcl::PointXYZ>);
+        // Create a new PointCloud for filtered points
+        pcl::PointCloud<pcl::PointXYZ>::Ptr filtered_cloud(new pcl::PointCloud<pcl::PointXYZ>);
 
-    // Apply filtering logic
-    for (const auto &point : pcl_cloud->points)
-    {
-        // Discard points with NaN or 0 values in any coordinate
-        if (std::isnan(point.x) || std::isnan(point.y) || std::isnan(point.z) ||
-            point.x == 0.0 || point.y == 0.0 || point.z == 0.0)
+        // Apply filtering logic
+        for (const auto &point : pcl_cloud->points)
         {
-            continue;
-        }
+            // Discard points with NaN or 0 values in any coordinate
+            if (std::isnan(point.x) || std::isnan(point.y) || std::isnan(point.z) ||
+                point.x == 0.0 || point.y == 0.0 || point.z == 0.0)
+            {
+                continue;
+            }
 
-        // Discard points with Z between -0.1 and 0.1 (assuming ground plane filter logic)
-        if (point.z > -0.1 && point.z < 0.1)
-            continue;
+            double distance = std::hypot(point.x - current_position_.x, point.y - current_position_.y);
+            
+            if (current_position_.z > -0.5 && current_position_.z < 0.5)
+            {
+                if (distance > 5.0)
+                {
+                    continue;
+                }
+            } else {
+                if (distance > 10.0)
+                {
+                    if (-2.0 > point.z)
+                    {
+                        continue;
+                    }
+                }else{
+                    if (-4.0 > point.z)
+                    {
+                        continue;
 
-        // Retain points within a 5-meter radius in the X-Y plane
-        double distance = std::hypot(point.x - current_position_.x, point.y - current_position_.y);
-        if (distance <= 5.0)
-        {
+                    }
+                }
+            }
             filtered_cloud->points.push_back(point);
         }
-    }
 
-    // Convert filtered PCL PointCloud back to ROS PointCloud2
-    sensor_msgs::msg::PointCloud2 filtered_msg;
-    pcl::toROSMsg(*filtered_cloud, filtered_msg);
-    filtered_msg.header = msg->header;
+        // Convert filtered PCL PointCloud back to ROS PointCloud2
+        sensor_msgs::msg::PointCloud2 filtered_msg;
+        pcl::toROSMsg(*filtered_cloud, filtered_msg);
+        filtered_msg.header = msg->header;
 
-    // Publish the filtered PointCloud
-    cloud_publisher_->publish(filtered_msg);
+        // Publish the filtered PointCloud
+        cloud_publisher_->publish(filtered_msg);
     }
 
     void odometryCallback(const px4_msgs::msg::VehicleOdometry::SharedPtr msg)
