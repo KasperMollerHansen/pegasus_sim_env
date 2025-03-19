@@ -50,48 +50,35 @@ private:
         pcl::PointCloud<pcl::PointXYZ>::Ptr pcl_cloud(new pcl::PointCloud<pcl::PointXYZ>);
         pcl::fromROSMsg(*msg, *pcl_cloud);
 
-        // Create a new PointCloud for filtered points
-        pcl::PointCloud<pcl::PointXYZ>::Ptr filtered_cloud(new pcl::PointCloud<pcl::PointXYZ>);
-
-        // Apply filtering logic
+        // Step 1: NaN and zero-value removal
+        pcl::PointCloud<pcl::PointXYZ>::Ptr temp_cloud(new pcl::PointCloud<pcl::PointXYZ>);
         for (const auto &point : pcl_cloud->points)
         {
-            // Discard points with NaN or 0 values in any coordinate
             if (std::isnan(point.x) || std::isnan(point.y) || std::isnan(point.z) ||
                 point.x == 0.0 || point.y == 0.0 || point.z == 0.0)
+            {
+                continue;  // Skip invalid points
+            }
+            double distance = std::hypot(point.x - current_position_.x, point.y - current_position_.y);
+
+            if (current_position_.z > -0.5 && current_position_.z < 3 && distance > 5.0)
             {
                 continue;
             }
 
-            double distance = std::hypot(point.x - current_position_.x, point.y - current_position_.y);
-            
-            if (current_position_.z > -0.5 && current_position_.z < 0.5)
-            {
-                if (distance > 5.0)
-                {
-                    continue;
-                }
-            } else {
-                if (distance > 10.0)
-                {
-                    if (-2.0 > point.z)
-                    {
-                        continue;
-                    }
-                }else{
-                    if (-4.0 > point.z)
-                    {
-                        continue;
-
-                    }
-                }
-            }
-            filtered_cloud->points.push_back(point);
+            temp_cloud->points.push_back(point);
         }
+
+        // Step 2: PassThrough filter to remove points outside a certain range (e.g., Z-axis filtering)
+        pcl::PassThrough<pcl::PointXYZ> pass;
+        pass.setInputCloud(temp_cloud);
+        pass.setFilterFieldName("z");  // Filtering based on Z-axis
+        pass.setFilterLimits(-z_threshold_, 2*z_threshold_);  // Set the range for the Z-axis values
+        pass.filter(*temp_cloud);
 
         // Convert filtered PCL PointCloud back to ROS PointCloud2
         sensor_msgs::msg::PointCloud2 filtered_msg;
-        pcl::toROSMsg(*filtered_cloud, filtered_msg);
+        pcl::toROSMsg(*temp_cloud, filtered_msg);
         filtered_msg.header = msg->header;
 
         // Publish the filtered PointCloud
@@ -123,7 +110,7 @@ private:
 
     float angular_velocity_magnitude_ = 0.0;
     const float angular_velocity_threshold_ = 0.5;
-
+    const float z_threshold_ = 3.0;
 
     rclcpp::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr cloud_subscriber_;
     rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr cloud_publisher_;
