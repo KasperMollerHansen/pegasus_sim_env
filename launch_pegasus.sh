@@ -18,7 +18,7 @@ echo "Initializing Micro XRCE-DDS Agent..."
 MicroXRCEAgent udp4 -p 8888 &
 
 # Initialize the lidar filter
-ros2 run pegasus_sim_env lidar_filter_node &
+# ros2 run pegasus_sim_env lidar_filter_node &
 
 # Execute the Python script
 echo "Running Python script..."

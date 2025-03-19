@@ -159,6 +159,7 @@ class OmniGraphs:
                     ("on_playback_tick", "omni.graph.action.OnPlaybackTick"),
                     ("isaac_run_one_simulation_frame","omni.isaac.core_nodes.OgnIsaacRunOneSimulationFrame"),
                     ("isaac_create_render_product","omni.isaac.core_nodes.IsaacCreateRenderProduct"),
+                    ("ros2_qos_profile", "omni.isaac.ros2_bridge.ROS2QoSProfile"),
                     ("rtx_lidar", "omni.isaac.ros2_bridge.ROS2RtxLidarHelper"),
                     ("lidar_namespace", "omni.graph.nodes.ConstantString"),
                 ],
@@ -169,6 +170,7 @@ class OmniGraphs:
                     ("isaac_run_one_simulation_frame.outputs:step", "isaac_create_render_product.inputs:execIn"),
                     # rtx_lidar inputs
                     ("lidar_namespace.inputs:value", "rtx_lidar.inputs:nodeNamespace"),
+                    ("ros2_qos_profile.outputs:qosProfile", "rtx_lidar.inputs:qosProfile"),
                     ("isaac_create_render_product.outputs:execOut", "rtx_lidar.inputs:execIn"),
                     ("isaac_create_render_product.outputs:renderProductPath","rtx_lidar.inputs:renderProductPath"),
                     ("ros2_context.outputs:context", "rtx_lidar.inputs:context"),
