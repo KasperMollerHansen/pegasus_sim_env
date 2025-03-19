@@ -32,6 +32,20 @@ public:
 private:
     void pointCloudCallback(const sensor_msgs::msg::PointCloud2::SharedPtr msg)
     {
+        // Check if the angular velocity is over the threshold
+        if (angular_velocity_magnitude_ > angular_velocity_threshold_)
+        {
+            // If angular velocity is large, discard all points in the cloud
+            pcl::PointCloud<pcl::PointXYZ>::Ptr filtered_cloud(new pcl::PointCloud<pcl::PointXYZ>);
+            sensor_msgs::msg::PointCloud2 filtered_msg;
+            pcl::toROSMsg(*filtered_cloud, filtered_msg);
+            filtered_msg.header = msg->header;
+
+            // Publish the empty cloud
+            cloud_publisher_->publish(filtered_msg);
+            return;
+        }
+
         // Convert ROS PointCloud2 to PCL PointCloud
         pcl::PointCloud<pcl::PointXYZ>::Ptr pcl_cloud(new pcl::PointCloud<pcl::PointXYZ>);
         pcl::fromROSMsg(*msg, *pcl_cloud);
@@ -90,6 +104,14 @@ private:
         current_position_.x = msg->position[1]; // Y
         current_position_.y = msg->position[0]; // X
         current_position_.z = -msg->position[2]; // -Z
+
+        // Calculate the angular velocity magnitude
+        float angular_velocity_magnitude = std::sqrt(std::pow(msg->angular_velocity[1], 2) + // Y
+                                                    std::pow(msg->angular_velocity[0], 2) + // X
+                                                    std::pow(msg->angular_velocity[2], 2)); // Z
+
+        // Store the angular velocity magnitude
+        angular_velocity_magnitude_ = angular_velocity_magnitude;
     }
 
     struct Position
@@ -98,6 +120,10 @@ private:
         double y = 0.0;
         double z = 0.0;
     } current_position_;
+
+    float angular_velocity_magnitude_ = 0.0;
+    const float angular_velocity_threshold_ = 0.5;
+
 
     rclcpp::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr cloud_subscriber_;
     rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr cloud_publisher_;
