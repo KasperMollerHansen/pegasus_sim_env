@@ -77,56 +77,6 @@ class TestFlight(Node):
             [0.0, 0.0, 23.0],
             [0.0, 0.0, 24.0],
             [0.0, 0.0, 25.0],
-            [0.0, 0.0, 26.0],
-            [0.0, 0.0, 27.0],
-            [0.0, 0.0, 28.0],
-            [0.0, 0.0, 29.0],
-            [0.0, 0.0, 30.0],
-            [0.0, 0.0, 31.0],
-            [0.0, 0.0, 32.0],
-            [0.0, 0.0, 33.0],
-            [0.0, 0.0, 34.0],
-            [0.0, 0.0, 35.0],
-            [0.0, 0.0, 36.0],
-            [0.0, 0.0, 37.0],
-            [0.0, 0.0, 38.0],
-            [0.0, 0.0, 39.0],
-            [0.0, 0.0, 40.0],
-            [0.0, 0.0, 41.0],
-            [0.0, 0.0, 42.0],
-            [0.0, 0.0, 43.0],
-            [0.0, 0.0, 44.0],
-            [0.0, 0.0, 45.0],
-            [0.0, 0.0, 46.0],
-            [0.0, 0.0, 47.0],
-            [0.0, 0.0, 48.0],
-            [0.0, 0.0, 49.0],
-            [0.0, 0.0, 50.0],
-            [0.0, 0.0, 49.0],
-            [0.0, 0.0, 48.0],
-            [0.0, 0.0, 47.0],
-            [0.0, 0.0, 46.0],
-            [0.0, 0.0, 45.0],
-            [0.0, 0.0, 44.0],
-            [0.0, 0.0, 43.0],
-            [0.0, 0.0, 42.0],
-            [0.0, 0.0, 41.0],
-            [0.0, 0.0, 40.0],
-            [0.0, 0.0, 39.0],
-            [0.0, 0.0, 38.0],
-            [0.0, 0.0, 37.0],
-            [0.0, 0.0, 36.0],
-            [0.0, 0.0, 35.0],
-            [0.0, 0.0, 34.0],
-            [0.0, 0.0, 33.0],
-            [0.0, 0.0, 32.0],
-            [0.0, 0.0, 31.0],
-            [0.0, 0.0, 30.0],
-            [0.0, 0.0, 29.0],
-            [0.0, 0.0, 28.0],
-            [0.0, 0.0, 27.0],
-            [0.0, 0.0, 26.0],
-            [0.0, 0.0, 25.0],
             [0.0, 0.0, 24.0],
             [0.0, 0.0, 23.0],
             [0.0, 0.0, 22.0],
@@ -176,11 +126,11 @@ class TestFlight(Node):
         target = self.coordinates[self.current_checkpoint]
         current = self.vehicle_odometry.position
         current = self.transform_position(current)
-        target = np.array(target) * 3
+        target = np.array(target) * 5
         current = np.array(current)
         if np.linalg.norm(current - target) < 0.5:
             self.current_checkpoint += 1
-            self.yaw += 15.0
+            self.yaw += 30.0
 
     @staticmethod
     def transform_position(position: list):
@@ -189,7 +139,7 @@ class TestFlight(Node):
 
     def timer_callback(self) -> None:
         position = self.coordinates[self.current_checkpoint]
-        position = [pos*3 for pos in position]
+        position = [pos*5 for pos in position]
         yaw = np.deg2rad(self.yaw)
         self.publish_position_setpoint(position, yaw)
         self.update_coordinates()
