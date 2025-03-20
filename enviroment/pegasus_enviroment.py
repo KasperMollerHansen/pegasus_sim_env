@@ -60,7 +60,7 @@ class PegasusApp:
         ClockPublisher()
         self._spawn_ground_plane(scale=[500, 500, 500])
         self._spawn_light()
-        self._spawn_windturbine(position=[-10, 0, -0.25], filename="windturbine.usdc")
+        self._spawn_windturbine(position=[-15, 0, -0.75], filename="windturbine.usdc")
         self._spawn_quadrotor(position=[0, 0, 0], rotation=[0, 0, 0], vehicle_id=0)
 
     @staticmethod
@@ -75,7 +75,7 @@ class PegasusApp:
         light.AddTranslateOp().Set(Gf.Vec3f(1000.0, 1000.0, 1000.0))
         return
 
-    def _spawn_windturbine(self, position=[0.0, 0.0, -0.25*3], filename="windturbine.usdc"):
+    def _spawn_windturbine(self, position=[0.0, 0.0, -0.25], filename="windturbine.usdc"):
         data_dir = os.path.join(self.working_dir, "data/")
         windturbine_path = data_dir + filename
         add_reference_to_stage(
