@@ -176,11 +176,11 @@ class TestFlight(Node):
         target = self.coordinates[self.current_checkpoint]
         current = self.vehicle_odometry.position
         current = self.transform_position(current)
-        target = np.array(target)
+        target = np.array(target) * 3
         current = np.array(current)
         if np.linalg.norm(current - target) < 0.5:
             self.current_checkpoint += 1
-            self.yaw += 5.0
+            self.yaw += 15.0
 
     @staticmethod
     def transform_position(position: list):
@@ -189,6 +189,7 @@ class TestFlight(Node):
 
     def timer_callback(self) -> None:
         position = self.coordinates[self.current_checkpoint]
+        position = [pos*3 for pos in position]
         yaw = np.deg2rad(self.yaw)
         self.publish_position_setpoint(position, yaw)
         self.update_coordinates()

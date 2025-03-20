@@ -40,7 +40,7 @@ ament_target_dependencies(setpoints_node
   rclcpp 
   px4_msgs
 )
-add_executable(lidar_filter_node src/ground_plane_lidar_filter.cpp)
+add_executable(lidar_filter_node src/lidar_filter.cpp)
 ament_target_dependencies(lidar_filter_node
   rclcpp
   sensor_msgs

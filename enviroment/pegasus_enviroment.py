@@ -60,7 +60,7 @@ class PegasusApp:
         ClockPublisher()
         self._spawn_ground_plane(scale=[500, 500, 500])
         self._spawn_light()
-        self._spawn_windturbine(position=[-5, 0, -0.25], filename="windturbine.usdc")
+        self._spawn_windturbine(position=[-15, 0, -0.75], filename="windturbine.usdc")
         self._spawn_quadrotor(position=[0, 0, 0], rotation=[0, 0, 0], vehicle_id=0)
 
     @staticmethod
@@ -84,7 +84,7 @@ class PegasusApp:
         XFormPrim(
             prim_path="/World/Windturbine",
             position=position,
-            scale=(0.1, 0.1, 0.1),  # Default scale is 100
+            scale=(0.3, 0.3, 0.3),
             orientation=rot_utils.euler_angles_to_quats(
                 np.array([90.0, 0.0, 180.0]), degrees=True
             ),
