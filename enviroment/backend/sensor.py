@@ -101,7 +101,7 @@ class RTXLidar():
             orientation = self.orientation,
         )
 
-        lidar_config = self.lidar_config
+        lidar_config = self.lidar_config["config_file"]
 
         _, self.lidar = omni.kit.commands.execute(
             "IsaacSensorCreateRtxLidar",
