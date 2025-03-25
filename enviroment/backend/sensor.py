@@ -79,7 +79,8 @@ class StereoCamera():
         
 class RTXLidar():
 
-    def __init__(self, topic_prefix, drone_prim_path, vehicle_id:int=0, translation:tuple=(0.0,0.0,0.0),orientation:tuple=(1.0, 0.0, 0.0, 0.0)):
+    def __init__(self, lidar_config, topic_prefix, drone_prim_path, vehicle_id:int=0, translation:tuple=(0.0,0.0,0.0),orientation:tuple=(1.0, 0.0, 0.0, 0.0)):
+        self.lidar_config = lidar_config
         self.topic_prefix = topic_prefix
         self.drone_prim_path = drone_prim_path
         self.body_prim_path = drone_prim_path + "/body"
@@ -100,7 +101,7 @@ class RTXLidar():
             orientation = self.orientation,
         )
 
-        lidar_config = "OS1_REV7_128ch20hz1024res"
+        lidar_config = self.lidar_config["config_file"]
 
         _, self.lidar = omni.kit.commands.execute(
             "IsaacSensorCreateRtxLidar",

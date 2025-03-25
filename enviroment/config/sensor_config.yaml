@@ -10,5 +10,8 @@ stereo_camera:
     near: 0.1
     far: 100000
 
+rtx_lidar:
+  config_file: "OS1_REV7_128ch10hz2048res"
+
 
 

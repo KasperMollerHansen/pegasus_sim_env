@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import rclpy
+import math
 import numpy as np
 from rclpy.node import Node
 from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy, DurabilityPolicy
@@ -51,59 +52,7 @@ class TestFlight(Node):
         self.vehicle_status = VehicleStatus()
         self.takeoff_height = -5.0
         self.current_checkpoint = 0
-        self.coordinates = [
-            [0.0, 0.0, 1.0],
-            [0.0,0.0, 2.0],
-            [0.0, 0.0, 3.0],
-            [0.0, 0.0, 4.0],
-            [0.0, 0.0, 5.0],
-            [0.0, 0.0, 6.0],
-            [0.0, 0.0, 7.0],
-            [0.0, 0.0, 8.0],
-            [0.0, 0.0, 9.0],
-            [0.0, 0.0, 10.0],
-            [0.0, 0.0, 11.0],
-            [0.0, 0.0, 12.0],
-            [0.0, 0.0, 13.0],
-            [0.0, 0.0, 14.0],
-            [0.0, 0.0, 15.0],
-            [0.0, 0.0, 16.0],
-            [0.0, 0.0, 17.0],
-            [0.0, 0.0, 18.0],
-            [0.0, 0.0, 19.0],
-            [0.0, 0.0, 20.0],
-            [0.0, 0.0, 21.0],
-            [0.0, 0.0, 22.0],
-            [0.0, 0.0, 23.0],
-            [0.0, 0.0, 24.0],
-            [0.0, 0.0, 25.0],
-            [0.0, 0.0, 24.0],
-            [0.0, 0.0, 23.0],
-            [0.0, 0.0, 22.0],
-            [0.0, 0.0, 21.0],
-            [0.0, 0.0, 20.0],
-            [0.0, 0.0, 19.0],
-            [0.0, 0.0, 18.0],
-            [0.0, 0.0, 17.0],
-            [0.0, 0.0, 16.0],
-            [0.0, 0.0, 15.0],
-            [0.0, 0.0, 14.0],
-            [0.0, 0.0, 13.0],
-            [0.0, 0.0, 12.0],
-            [0.0, 0.0, 11.0],
-            [0.0, 0.0, 10.0],
-            [0.0, 0.0, 9.0],
-            [0.0, 0.0, 8.0],
-            [0.0, 0.0, 7.0],
-            [0.0, 0.0, 6.0],
-            [0.0, 0.0, 5.0],
-            [0.0, 0.0, 4.0],
-            [0.0, 0.0, 3.0],
-            [0.0, 0.0, 2.0],
-            [0.0, 0.0, 1.0],
-            [0.0, 0.0, 0.0],
-        ]
-
+        self.coordinates = generate_coordinates(center_x=200, center_y=0, radius=100, num_points=8, height=125)
         self.yaw = 0.0
 
         # Create a timer to publish control commands
@@ -126,11 +75,10 @@ class TestFlight(Node):
         target = self.coordinates[self.current_checkpoint]
         current = self.vehicle_odometry.position
         current = self.transform_position(current)
-        target = np.array(target) * 5
+        target = np.array(target)
         current = np.array(current)
-        if np.linalg.norm(current - target) < 0.5:
+        if np.linalg.norm(current - target) < 2.0:
             self.current_checkpoint += 1
-            self.yaw += 30.0
 
     @staticmethod
     def transform_position(position: list):
@@ -139,11 +87,46 @@ class TestFlight(Node):
 
     def timer_callback(self) -> None:
         position = self.coordinates[self.current_checkpoint]
-        position = [pos*5 for pos in position]
+        position = [pos for pos in position]
         yaw = np.deg2rad(self.yaw)
         self.publish_position_setpoint(position, yaw)
         self.update_coordinates()
 
+
+def generate_points_in_radius(center_x, center_y, center_z, radius, num_points, height):
+    """Generates points within a specified radius around a center point."""
+    coordinates = []
+    for i in range(num_points):
+        angle = 2 * math.pi * i / num_points
+        x = center_x + radius * math.cos(angle)
+        y = center_y + radius * math.sin(angle)
+        coordinates.append([float(x), float(y), float(height)])
+    return coordinates
+
+def calculate_distance(point1, point2):
+    """Calculates the Euclidean distance between two points."""
+    return math.sqrt((point1[0] - point2[0])**2 + (point1[1] - point2[1])**2 + (point1[2] - point2[2])**2)
+
+def calculate_angle(point, center):
+    """Calculates the angle of a point relative to the center."""
+    return math.atan2(point[1] - center[1], point[0] - center[0])
+
+def generate_coordinates(center_x=150, center_y=0, center_z=0, radius=75, num_points=90, height=125):
+    """Generates coordinates in a circle, starting from the closest point to [0, 0, 50]."""
+    initial_point = [0.0, 0.0, 50.0]
+    end_point = [0.0, 0.0, float(height)]
+    generated_points = generate_points_in_radius(center_x, center_y, center_z, radius, num_points, height)
+
+    # Find the closest point
+    closest_point = min(generated_points, key=lambda point: calculate_distance(initial_point, point))
+    closest_point_index = generated_points.index(closest_point)
+
+    # Arrange the points in circular order starting from the closest
+    ordered_points = generated_points[closest_point_index:] + generated_points[:closest_point_index]
+
+    coordinates = [initial_point]+[ordered_points[0]] + ordered_points[1:] + [end_point]
+
+    return coordinates
 
 def main(args=None) -> None:
     print("Starting offboard control node...")

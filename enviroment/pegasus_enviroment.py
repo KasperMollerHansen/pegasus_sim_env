@@ -60,7 +60,7 @@ class PegasusApp:
         ClockPublisher()
         self._spawn_ground_plane(scale=[500, 500, 500])
         self._spawn_light()
-        self._spawn_windturbine(position=[-15, 0, -0.75], filename="windturbine.usdc")
+        self._spawn_windturbine(position=[200, 0, -0.75], filename="windturbine.usdc")
         self._spawn_quadrotor(position=[0, 0, 0], rotation=[0, 0, 0], vehicle_id=0)
 
     @staticmethod
@@ -138,8 +138,9 @@ class PegasusApp:
 
         if lidar:
             RTXLidar(
-               self.topic_prefix,
-                drone_prim_path,
+                lidar_config=config_file["rtx_lidar"],
+                topic_prefix=self.topic_prefix,
+                drone_prim_path=drone_prim_path,
                 vehicle_id=vehicle_id,
                 translation=(0.0, 0.0, 0.25),
             )
