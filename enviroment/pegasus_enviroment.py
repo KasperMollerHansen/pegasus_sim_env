@@ -60,7 +60,7 @@ class PegasusApp:
         ClockPublisher()
         self._spawn_ground_plane(scale=[500, 500, 500])
         self._spawn_light()
-        self._spawn_windturbine(position=[150, 0, -0.75], filename="windturbine.usdc")
+        self._spawn_windturbine(position=[200, 0, -0.75], filename="windturbine.usdc")
         self._spawn_quadrotor(position=[0, 0, 0], rotation=[0, 0, 0], vehicle_id=0)
 
     @staticmethod
