@@ -1,16 +1,18 @@
 #include "rclcpp/rclcpp.hpp"
 #include "nav_msgs/msg/occupancy_grid.hpp"
-#include "nav_msgs/msg/map_meta_data.hpp"
 #include "sensor_msgs/msg/point_cloud2.hpp"
 #include "tf2_ros/transform_listener.h"
 #include "tf2_ros/buffer.h"
 #include "geometry_msgs/msg/transform_stamped.hpp"
 #include "tf2/exceptions.h"
+#include <pcl_conversions/pcl_conversions.h>
+#include <pcl/point_cloud.h>
+#include <pcl/point_types.h>
 
-class FreeCostMapNode : public rclcpp::Node {
+class ESDFCostMapNode : public rclcpp::Node {
 public:
-  FreeCostMapNode()
-  : Node("free_cost_map_node"),
+  ESDFCostMapNode()
+  : Node("esdf_cost_map_node"),
     tf_buffer_(this->get_clock()),
     tf_listener_(tf_buffer_)
   {
@@ -27,25 +29,29 @@ public:
     grid_size_ = static_cast<int>(map_size_ / resolution_);
     half_size_ = map_size_ / 2.0;
 
-    // Subscribe to the ESDF point cloud topic (ESDF acts as a trigger)
+    // Subscribe to the ESDF point cloud topic
     esdf_sub_ = this->create_subscription<sensor_msgs::msg::PointCloud2>(
       "/nvblox_node/static_esdf_pointcloud", 10,
-      std::bind(&FreeCostMapNode::esdf_callback, this, std::placeholders::_1)
+      std::bind(&ESDFCostMapNode::esdf_callback, this, std::placeholders::_1)
     );
 
     // Publisher for the cost map (occupancy grid)
     costmap_pub_ = this->create_publisher<nav_msgs::msg::OccupancyGrid>("/cost_map", 10);
 
-    RCLCPP_INFO(this->get_logger(), "Free cost map node initialized.");
+    RCLCPP_INFO(this->get_logger(), "ESDF cost map node initialized.");
   }
 
 private:
   void esdf_callback(const sensor_msgs::msg::PointCloud2::SharedPtr esdf_msg)
   {
-    // Create an occupancy grid that is completely free (all cells = 0)
+    // Convert the PointCloud2 message to a PCL point cloud
+    pcl::PointCloud<pcl::PointXYZ>::Ptr cloud(new pcl::PointCloud<pcl::PointXYZ>());
+    pcl::fromROSMsg(*esdf_msg, *cloud);
+
+    // Create an occupancy grid
     nav_msgs::msg::OccupancyGrid grid;
 
-    // Use the ESDF message timestamp, but override the frame_id to ensure it's centered on base_link.
+    // Use the ESDF message timestamp and set the frame_id
     grid.header.stamp = esdf_msg->header.stamp;
     grid.header.frame_id = "odom"; // Use a fixed frame like "map" or "odom"
 
@@ -62,24 +68,37 @@ private:
     grid.info.resolution = resolution_;
     grid.info.width = grid_size_;
     grid.info.height = grid_size_;
-
-    // Set the origin so the map is centered at the transformed base_link position
     grid.info.origin.position.x = transform.transform.translation.x - half_size_;
     grid.info.origin.position.y = transform.transform.translation.y - half_size_;
-    grid.info.origin.position.z = transform.transform.translation.z;
-
-    // Force the orientation to neutral rotation (aligned with global axes)
+    grid.info.origin.position.z = 0.0;
     grid.info.origin.orientation.x = 0.0;
     grid.info.origin.orientation.y = 0.0;
     grid.info.origin.orientation.z = 0.0;
     grid.info.origin.orientation.w = 1.0;
 
-    // Create a grid with all cells free (0 means free in our convention)
-    grid.data.resize(grid_size_ * grid_size_, 0);
+    // Initialize the grid data with unknown values (-1)
+    grid.data.resize(grid_size_ * grid_size_, -1);
+
+    // Populate the grid based on the ESDF data
+    for (const auto& point : cloud->points) {
+      // Convert the point's position to grid coordinates
+      int grid_x = static_cast<int>((point.x - grid.info.origin.position.x) / resolution_);
+      int grid_y = static_cast<int>((point.y - grid.info.origin.position.y) / resolution_);
+
+      // Check if the point is within the grid bounds
+      if (grid_x >= 0 && grid_x < grid_size_ && grid_y >= 0 && grid_y < grid_size_) {
+        // Compute the cost based on the distance (e.g., inverse of distance)
+        float distance = std::sqrt(point.x * point.x + point.y * point.y);
+        int cost = static_cast<int>(100.0f * std::exp(-distance));// Example cost function
+
+        // Update the grid cell
+        grid.data[grid_y * grid_size_ + grid_x] = cost;
+      }
+    }
 
     // Publish the occupancy grid
     costmap_pub_->publish(grid);
-    RCLCPP_INFO(this->get_logger(), "Published free cost map at time: %u.%u", 
+    RCLCPP_INFO(this->get_logger(), "Published ESDF-based cost map at time: %u.%u", 
                 grid.header.stamp.sec, grid.header.stamp.nanosec);
   }
 
@@ -102,7 +121,7 @@ private:
 int main(int argc, char ** argv)
 {
   rclcpp::init(argc, argv);
-  auto node = std::make_shared<FreeCostMapNode>();
+  auto node = std::make_shared<ESDFCostMapNode>();
   rclcpp::spin(node);
   rclcpp::shutdown();
   return 0;
