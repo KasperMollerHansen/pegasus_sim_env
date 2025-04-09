@@ -8,6 +8,7 @@
 #include <pcl_conversions/pcl_conversions.h>
 #include <pcl/point_cloud.h>
 #include <pcl/point_types.h>
+#include <algorithm>
 
 class ESDFCostMapNode : public rclcpp::Node {
 public:
@@ -18,16 +19,30 @@ public:
   {
     // Declare and retrieve parameters
     this->declare_parameter("resolution", 1.0);     // Cell size in meters
-    this->declare_parameter("map_size", 150.0);    // Map is 150 m x 150 m
-    this->declare_parameter("frame_id", "base_link"); // Map centered at base_link
+    this->declare_parameter("local_map_size", 200.0);    // Local map size (200 m x 200 m)
+    this->declare_parameter("global_map_size", 1500.0);  // Global map size (1500 m x 1500 m)
+    this->declare_parameter("frame_id", "base_link");    // Map centered at base_link
 
     resolution_ = this->get_parameter("resolution").as_double();
-    map_size_   = this->get_parameter("map_size").as_double();
-    frame_id_   = this->get_parameter("frame_id").as_string();
+    local_map_size_ = this->get_parameter("local_map_size").as_double();
+    global_map_size_ = this->get_parameter("global_map_size").as_double();
+    frame_id_ = this->get_parameter("frame_id").as_string();
 
-    // Compute grid dimensions: number of cells in each direction
-    grid_size_ = static_cast<int>(map_size_ / resolution_);
-    half_size_ = map_size_ / 2.0;
+    // Compute grid dimensions
+    local_grid_size_ = static_cast<int>(local_map_size_ / resolution_);
+    global_grid_size_ = static_cast<int>(global_map_size_ / resolution_);
+    local_half_size_ = local_map_size_ / 2.0;
+    global_half_size_ = global_map_size_ / 2.0;
+
+    // Initialize the global map
+    global_map_.info.resolution = resolution_;
+    global_map_.info.width = global_grid_size_;
+    global_map_.info.height = global_grid_size_;
+    global_map_.info.origin.position.x = -global_half_size_;
+    global_map_.info.origin.position.y = -global_half_size_;
+    global_map_.info.origin.position.z = 0.0;
+    global_map_.info.origin.orientation.w = 1.0;
+    global_map_.data.resize(global_grid_size_ * global_grid_size_, -1); // Initialize as unknown
 
     // Subscribe to the ESDF point cloud topic
     esdf_sub_ = this->create_subscription<sensor_msgs::msg::PointCloud2>(
@@ -35,25 +50,21 @@ public:
       std::bind(&ESDFCostMapNode::esdf_callback, this, std::placeholders::_1)
     );
 
-    // Publisher for the cost map (occupancy grid)
-    costmap_pub_ = this->create_publisher<nav_msgs::msg::OccupancyGrid>("out/local_cost_map", 10);
+    // Publisher for the global cost map
+    global_map_pub_ = this->create_publisher<nav_msgs::msg::OccupancyGrid>("out/global_cost_map", 10);
+
+    // Publisher for the local cost map
+    local_map_pub_ = this->create_publisher<nav_msgs::msg::OccupancyGrid>("out/local_cost_map", 10);
 
     RCLCPP_INFO(this->get_logger(), "ESDF cost map node initialized.");
   }
 
 private:
-  void esdf_callback(const sensor_msgs::msg::PointCloud2::SharedPtr esdf_msg)
-  {
+void esdf_callback(const sensor_msgs::msg::PointCloud2::SharedPtr esdf_msg)
+{
     // Convert the PointCloud2 message to a PCL point cloud
     pcl::PointCloud<pcl::PointXYZI>::Ptr cloud(new pcl::PointCloud<pcl::PointXYZI>());
     pcl::fromROSMsg(*esdf_msg, *cloud);
-
-    // Create an occupancy grid
-    nav_msgs::msg::OccupancyGrid grid;
-
-    // Use the ESDF message timestamp and set the frame_id
-    grid.header.stamp = esdf_msg->header.stamp;
-    grid.header.frame_id = "odom"; // Use a fixed frame like "map" or "odom"
 
     // Transform the base_link position into the global frame
     geometry_msgs::msg::TransformStamped transform;
@@ -64,52 +75,81 @@ private:
         return;
     }
 
-    // Set up map metadata
-    grid.info.resolution = resolution_;
-    grid.info.width = grid_size_;
-    grid.info.height = grid_size_;
-    grid.info.origin.position.x = transform.transform.translation.x - half_size_;
-    grid.info.origin.position.y = transform.transform.translation.y - half_size_;
-    grid.info.origin.position.z = 0.0;
-    grid.info.origin.orientation.x = 0.0;
-    grid.info.origin.orientation.y = 0.0;
-    grid.info.origin.orientation.z = 0.0;
-    grid.info.origin.orientation.w = 1.0;
+    // Create a local occupancy grid based on the global map
+    nav_msgs::msg::OccupancyGrid local_map;
+    local_map.info.resolution = resolution_;
+    local_map.info.width = local_grid_size_;
+    local_map.info.height = local_grid_size_;
+    local_map.info.origin.position.x = transform.transform.translation.x - local_half_size_;
+    local_map.info.origin.position.y = transform.transform.translation.y - local_half_size_;
+    local_map.info.origin.position.z = 0.0;
+    local_map.info.origin.orientation.w = 1.0;
+    local_map.data.resize(local_grid_size_ * local_grid_size_, -1); // Initialize as unknown
 
-    // Initialize the grid data with unknown values (-1)
-    grid.data.resize(grid_size_ * grid_size_, -1);
+    // Extract the corresponding region from the global map
+    for (int y = 0; y < local_grid_size_; ++y) {
+        for (int x = 0; x < local_grid_size_; ++x) {
+            int global_x = static_cast<int>((local_map.info.origin.position.x + x * resolution_ - global_map_.info.origin.position.x) / resolution_);
+            int global_y = static_cast<int>((local_map.info.origin.position.y + y * resolution_ - global_map_.info.origin.position.y) / resolution_);
+            int global_index = global_y * global_grid_size_ + global_x;
+            int local_index = y * local_grid_size_ + x;
 
-    // Populate the grid based on the ESDF data
-    for (const auto& point : cloud->points) {
-      // Convert the point's position to grid coordinates
-      int grid_x = static_cast<int>((point.x - grid.info.origin.position.x) / resolution_);
-      int grid_y = static_cast<int>((point.y - grid.info.origin.position.y) / resolution_);
-
-      // Check if the point is within the grid bounds
-      if (grid_x >= 0 && grid_x < grid_size_ && grid_y >= 0 && grid_y < grid_size_) {
-        // Compute the cost based on the distance (e.g., inverse of distance)
-        float distance = point.intensity; // Assuming intensity holds the distance
-        int cost = static_cast<int>(100.0f / 20.0f * distance); // Higher intensity -> higher cost
-      
-        // Clamp the cost to the range [0, 100] to ensure valid occupancy grid values
-        cost = std::min(100, std::max(0, cost));
-
-        // Update the grid cell
-        grid.data[grid_y * grid_size_ + grid_x] = cost;
-      }
+            if (global_x >= 0 && global_x < global_grid_size_ && global_y >= 0 && global_y < global_grid_size_) {
+                local_map.data[local_index] = global_map_.data[global_index];
+            }
+        }
     }
 
-    // Publish the occupancy grid
-    costmap_pub_->publish(grid);
-    RCLCPP_INFO(this->get_logger(), "Published ESDF-based cost map at time: %u.%u", 
-                grid.header.stamp.sec, grid.header.stamp.nanosec);
-  }
+    // Overwrite the local map with ESDF data
+    for (const auto& point : cloud->points) {
+        int grid_x = static_cast<int>((point.x - local_map.info.origin.position.x) / resolution_);
+        int grid_y = static_cast<int>((point.y - local_map.info.origin.position.y) / resolution_);
+
+        if (grid_x >= 0 && grid_x < local_grid_size_ && grid_y >= 0 && grid_y < local_grid_size_) {
+            float distance = point.intensity;
+            int cost = static_cast<int>((distance / 20.0f) * 100.0f);
+            cost = std::min(100, std::max(0, cost));
+            local_map.data[grid_y * local_grid_size_ + grid_x] = cost;
+        }
+    }
+
+    // Merge the updated local map back into the global map
+    for (int y = 0; y < local_grid_size_; ++y) {
+        for (int x = 0; x < local_grid_size_; ++x) {
+            int local_index = y * local_grid_size_ + x;
+            int global_x = static_cast<int>((local_map.info.origin.position.x + x * resolution_ - global_map_.info.origin.position.x) / resolution_);
+            int global_y = static_cast<int>((local_map.info.origin.position.y + y * resolution_ - global_map_.info.origin.position.y) / resolution_);
+            int global_index = global_y * global_grid_size_ + global_x;
+
+            if (global_x >= 0 && global_x < global_grid_size_ && global_y >= 0 && global_y < global_grid_size_) {
+                if (local_map.data[local_index] != -1) { // If the local cell is observed
+                    global_map_.data[global_index] = local_map.data[local_index];
+                }
+            }
+        }
+    }
+
+    // Publish the local map
+    local_map.header.stamp = this->now();
+    local_map.header.frame_id = "odom";
+    local_map_pub_->publish(local_map);
+
+    // Publish the global map
+    global_map_.header.stamp = this->now();
+    global_map_.header.frame_id = "odom";
+    global_map_pub_->publish(global_map_);
+
+    RCLCPP_INFO(this->get_logger(), "Published local and global cost maps.");
+}
 
   // Parameters and computed values
   double resolution_;
-  double map_size_;
-  int grid_size_;
-  double half_size_;
+  double local_map_size_;
+  double global_map_size_;
+  int local_grid_size_;
+  int global_grid_size_;
+  double local_half_size_;
+  double global_half_size_;
   std::string frame_id_;
 
   // TF2 buffer and listener
@@ -118,7 +158,11 @@ private:
 
   // ROS publisher and subscriber
   rclcpp::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr esdf_sub_;
-  rclcpp::Publisher<nav_msgs::msg::OccupancyGrid>::SharedPtr costmap_pub_;
+  rclcpp::Publisher<nav_msgs::msg::OccupancyGrid>::SharedPtr global_map_pub_;
+  rclcpp::Publisher<nav_msgs::msg::OccupancyGrid>::SharedPtr local_map_pub_;
+
+  // Global map
+  nav_msgs::msg::OccupancyGrid global_map_;
 };
 
 int main(int argc, char ** argv)
