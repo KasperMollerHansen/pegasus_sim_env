@@ -36,7 +36,7 @@ public:
     );
 
     // Publisher for the cost map (occupancy grid)
-    costmap_pub_ = this->create_publisher<nav_msgs::msg::OccupancyGrid>("/cost_map", 10);
+    costmap_pub_ = this->create_publisher<nav_msgs::msg::OccupancyGrid>("out/local_cost_map", 10);
 
     RCLCPP_INFO(this->get_logger(), "ESDF cost map node initialized.");
   }
@@ -45,7 +45,7 @@ private:
   void esdf_callback(const sensor_msgs::msg::PointCloud2::SharedPtr esdf_msg)
   {
     // Convert the PointCloud2 message to a PCL point cloud
-    pcl::PointCloud<pcl::PointXYZ>::Ptr cloud(new pcl::PointCloud<pcl::PointXYZ>());
+    pcl::PointCloud<pcl::PointXYZI>::Ptr cloud(new pcl::PointCloud<pcl::PointXYZI>());
     pcl::fromROSMsg(*esdf_msg, *cloud);
 
     // Create an occupancy grid
@@ -88,8 +88,11 @@ private:
       // Check if the point is within the grid bounds
       if (grid_x >= 0 && grid_x < grid_size_ && grid_y >= 0 && grid_y < grid_size_) {
         // Compute the cost based on the distance (e.g., inverse of distance)
-        float distance = std::sqrt(point.x * point.x + point.y * point.y);
-        int cost = static_cast<int>(100.0f * std::exp(-distance));// Example cost function
+        float distance = point.intensity; // Assuming intensity holds the distance
+        int cost = static_cast<int>(100.0f / 20.0f * distance); // Higher intensity -> higher cost
+      
+        // Clamp the cost to the range [0, 100] to ensure valid occupancy grid values
+        cost = std::min(100, std::max(0, cost));
 
         // Update the grid cell
         grid.data[grid_y * grid_size_ + grid_x] = cost;
