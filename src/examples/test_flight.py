@@ -52,7 +52,7 @@ class TestFlight(Node):
         self.vehicle_status = VehicleStatus()
         self.takeoff_height = -5.0
         self.current_checkpoint = 0
-        self.coordinates = generate_coordinates(center_x=200, center_y=0, radius=100, num_points=8, height=125)
+        self.coordinates = generate_coordinates(center_x=200, center_y=0, radius=30, num_points=8, height=125)
         self.yaw = 0.0
 
         # Create a timer to publish control commands
