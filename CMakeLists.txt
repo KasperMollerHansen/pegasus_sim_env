@@ -25,6 +25,7 @@ find_package(px4_msgs REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(sensor_msgs REQUIRED)
 find_package(rclpy REQUIRED)
+find_package(geometry_msgs REQUIRED)
 
 # Include directories for your package
 include_directories(include)
@@ -36,8 +37,18 @@ ament_target_dependencies(setpoints_node
   px4_msgs
 )
 
+# Add executable for src/nav2_navigation.cpp
+add_executable(nav2_navigation src/nav2_navigation.cpp)
+ament_target_dependencies(nav2_navigation
+  rclcpp 
+  px4_msgs
+  geometry_msgs
+)
+
+
 install(TARGETS 
-  setpoints_node 
+  setpoints_node
+  nav2_navigation
   DESTINATION lib/${PROJECT_NAME}
 )
 
