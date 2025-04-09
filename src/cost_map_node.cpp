@@ -22,11 +22,13 @@ public:
     this->declare_parameter("local_map_size", 200.0);    // Local map size (200 m x 200 m)
     this->declare_parameter("global_map_size", 1500.0);  // Global map size (1500 m x 1500 m)
     this->declare_parameter("frame_id", "base_link");    // Map centered at base_link
+    this->declare_parameter("intensity_threshold", 20); // Intensity threshold for ESDF
 
     resolution_ = this->get_parameter("resolution").as_double();
     local_map_size_ = this->get_parameter("local_map_size").as_double();
     global_map_size_ = this->get_parameter("global_map_size").as_double();
     frame_id_ = this->get_parameter("frame_id").as_string();
+    intensity_threshold_ = this->get_parameter("intensity_threshold").as_double();
 
     // Compute grid dimensions
     local_grid_size_ = static_cast<int>(local_map_size_ / resolution_);
@@ -51,10 +53,10 @@ public:
     );
 
     // Publisher for the global cost map
-    global_map_pub_ = this->create_publisher<nav_msgs::msg::OccupancyGrid>("out/global_cost_map", 10);
+    global_map_pub_ = this->create_publisher<nav_msgs::msg::OccupancyGrid>("out/global_costmap", 10);
 
     // Publisher for the local cost map
-    local_map_pub_ = this->create_publisher<nav_msgs::msg::OccupancyGrid>("out/local_cost_map", 10);
+    local_map_pub_ = this->create_publisher<nav_msgs::msg::OccupancyGrid>("out/local_costmap", 10);
 
     RCLCPP_INFO(this->get_logger(), "ESDF cost map node initialized.");
   }
