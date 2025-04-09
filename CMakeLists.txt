@@ -9,6 +9,16 @@ if(NOT CMAKE_C_STANDARD)
 	set(CMAKE_C_STANDARD 99)
 endif()
 
+# Suppress CMP0144 warnings (find_package uses upper-case <PACKAGENAME>_ROOT variables)
+if(POLICY CMP0144)
+  cmake_policy(SET CMP0144 NEW)
+endif()
+
+# Suppress CMP0167 warnings (FindBoost module is removed)
+if(POLICY CMP0167)
+  cmake_policy(SET CMP0167 NEW)
+endif()
+
 # Default to C++14
 if(NOT CMAKE_CXX_STANDARD)
 	set(CMAKE_CXX_STANDARD 14)
@@ -80,6 +90,11 @@ endif()
 ###########
 # Python ##
 ###########
+
+# Install the launch directory
+install(DIRECTORY launch/
+  DESTINATION share/${PROJECT_NAME}/launch
+)
 
 # Install Python modules
 ament_python_install_package(${PROJECT_NAME})
