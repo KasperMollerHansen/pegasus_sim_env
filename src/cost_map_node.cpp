@@ -22,7 +22,7 @@ public:
     this->declare_parameter("local_map_size", 200.0);    // Local map size (200 m x 200 m)
     this->declare_parameter("global_map_size", 1500.0);  // Global map size (1500 m x 1500 m)
     this->declare_parameter("frame_id", "base_link");    // Map centered at base_link
-    this->declare_parameter("intensity_threshold", 20); // Intensity threshold for ESDF
+    this->declare_parameter("intensity_threshold", 20.0); // Intensity threshold for ESDF
 
     resolution_ = this->get_parameter("resolution").as_double();
     local_map_size_ = this->get_parameter("local_map_size").as_double();
@@ -109,7 +109,7 @@ void esdf_callback(const sensor_msgs::msg::PointCloud2::SharedPtr esdf_msg)
 
         if (grid_x >= 0 && grid_x < local_grid_size_ && grid_y >= 0 && grid_y < local_grid_size_) {
             float distance = point.intensity;
-            int cost = static_cast<int>((distance / 20.0f) * 100.0f);
+            int cost = static_cast<int>((distance / intensity_threshold_) * 100.0f);
             cost = std::min(100, std::max(0, cost));
             local_map.data[grid_y * local_grid_size_ + grid_x] = cost;
         }
@@ -152,6 +152,7 @@ void esdf_callback(const sensor_msgs::msg::PointCloud2::SharedPtr esdf_msg)
   int global_grid_size_;
   double local_half_size_;
   double global_half_size_;
+  double intensity_threshold_;
   std::string frame_id_;
 
   // TF2 buffer and listener

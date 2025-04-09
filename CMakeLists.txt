@@ -91,11 +91,6 @@ endif()
 # Python ##
 ###########
 
-# Install the launch directory
-install(DIRECTORY launch/
-  DESTINATION share/${PROJECT_NAME}/launch
-)
-
 # Install Python modules
 ament_python_install_package(${PROJECT_NAME})
 
