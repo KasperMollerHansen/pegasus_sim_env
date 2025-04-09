@@ -123,10 +123,7 @@ void OffboardControl::publish_trajectory_setpoint(const geometry_msgs::msg::Twis
         static_cast<float>(-received_msg->linear.z)}; // -z
 
     // // Transform yaw: yaw -> -yaw
-    // msg.yawspeed = static_cast<float>(-received_msg->angular.z);
-
-
-    // msg.yawspeed = 0.0f;
+    msg.yaw = M_PI / 2.0;
 
 
     // Update the timestamp to the current time
