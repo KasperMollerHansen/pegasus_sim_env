@@ -259,36 +259,42 @@ private:
         float z_goal = goal.pose.position.z;
 
         // Calculate the total number of steps in the path
-        int total_steps = 0;
+        std::vector<int> reverse_indices;
         int temp_index = current_index;
         while (came_from.count(temp_index)) {
+            reverse_indices.push_back(temp_index);
             temp_index = came_from[temp_index];
-            total_steps++;
+        }
+        reverse_indices.push_back(toIndex(start_x, start_y)); // Include the start position
+
+        // Ensure there are steps to interpolate
+        int total_steps = reverse_indices.size();
+        if (total_steps <= 1) {
+            RCLCPP_WARN(this->get_logger(), "Path has insufficient steps for interpolation.");
+            return {};
         }
 
         // Calculate the z-step for interpolation
-        float z_step = (z_goal - z_start) / (total_steps + 1); // Linear interpolation step
+        float z_step = (z_goal - z_start) / (total_steps - 1); // Linear interpolation step
 
-        int step_count = total_steps;
-        while (came_from.count(current_index)) {
-            int x = current_index % width;
-            int y = current_index / width;
+        // Reconstruct the path in reverse order
+        for (int i = 0; i < total_steps; ++i) {
+            int index = reverse_indices[total_steps - 1 - i]; // Reverse the order
+            int x = index % width;
+            int y = index / width;
+
             geometry_msgs::msg::PoseStamped pose;
             pose.header.frame_id = costmap_->header.frame_id;
             pose.pose.position.x = x * resolution + costmap_->info.origin.position.x;
             pose.pose.position.y = y * resolution + costmap_->info.origin.position.y;
-            pose.pose.position.z = z_start + (z_step * step_count); // Interpolate z-coordinate
+            pose.pose.position.z = z_start + (z_step * i); // Interpolate z-coordinate
             path.push_back(pose);
-            current_index = came_from[current_index];
-            step_count--;
         }
-    
-        std::reverse(path.begin(), path.end());
-    
+
         // Add the final goal position with the correct z-coordinate
         geometry_msgs::msg::PoseStamped final_pose = goal;
         path.push_back(final_pose);
-    
+
         return path;
     }
 };
