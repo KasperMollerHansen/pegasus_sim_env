@@ -29,7 +29,7 @@ class TestFlight(Node):
 
         # Path publisher
         self.path_publisher = self.create_publisher(
-            Path, "in/trajectory_path", qos_profile
+            Path, "/in/trajectory_path", qos_profile
         )
 
         odometry_qos_profile = QoSProfile(
