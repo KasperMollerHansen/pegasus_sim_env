@@ -51,6 +51,9 @@ add_executable(setpoints_node src/setpoints.cpp)
 ament_target_dependencies(setpoints_node
   rclcpp 
   px4_msgs
+  nav_msgs
+  tf2
+  tf2_ros
 )
 
 # Add executable for src/nav2_navigation.cpp
