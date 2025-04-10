@@ -6,6 +6,7 @@
 #include <tf2_ros/transform_listener.h>
 #include <tf2_ros/buffer.h>
 #include <geometry_msgs/msg/transform_stamped.hpp>
+#include <tf2_geometry_msgs/tf2_geometry_msgs.hpp> // Updated header
 #include <vector>
 #include <queue>
 #include <cmath>
@@ -43,130 +44,76 @@ public:
 
         // Subscribe to the local costmap
         costmap_sub_ = this->create_subscription<nav_msgs::msg::OccupancyGrid>(
-            "local_costmap/costmap", 10,
+            "/local_costmap/costmap", 10,
             std::bind(&AStarPlanner::costmapCallback, this, std::placeholders::_1));
 
-        // Subscribe to goal setpoints from TestFlight
-        setpoints_sub_ = this->create_subscription<px4_msgs::msg::TrajectorySetpoint>(
-            "in/target_setpoint", qos_profile,
-            std::bind(&AStarPlanner::setpointCallback, this, std::placeholders::_1));
+        // Subscribe to the Path topic
+        path_sub_ = this->create_subscription<nav_msgs::msg::Path>(
+            "in/trajectory_path", qos_profile,
+            std::bind(&AStarPlanner::pathCallback, this, std::placeholders::_1));
 
         // Publisher for the planned path
         path_pub_ = this->create_publisher<nav_msgs::msg::Path>("/planned_path", 10);
-
-        // Timer for debugging the cost of the current position
-        debug_timer_ = this->create_wall_timer(
-            std::chrono::seconds(5),
-            std::bind(&AStarPlanner::debugCurrentPositionCost, this));
     }
 
 private:
     rclcpp::Subscription<nav_msgs::msg::OccupancyGrid>::SharedPtr costmap_sub_;
-    rclcpp::Subscription<px4_msgs::msg::TrajectorySetpoint>::SharedPtr setpoints_sub_;
+    rclcpp::Subscription<nav_msgs::msg::Path>::SharedPtr path_sub_;
     rclcpp::Publisher<nav_msgs::msg::Path>::SharedPtr path_pub_;
-    rclcpp::TimerBase::SharedPtr debug_timer_;
-
     std::shared_ptr<tf2_ros::Buffer> tf_buffer_;
     std::shared_ptr<tf2_ros::TransformListener> tf_listener_;
-
     nav_msgs::msg::OccupancyGrid::SharedPtr costmap_;
     int obstacle_threshold_;
     int smoothing_window_;
     std::string frame_id_;
-    geometry_msgs::msg::PoseStamped::SharedPtr last_goal_;
 
     void costmapCallback(const nav_msgs::msg::OccupancyGrid::SharedPtr msg) {
         costmap_ = msg;
         RCLCPP_INFO(this->get_logger(), "Received costmap");
-
-        // Re-plan if a goal is already set
-        if (last_goal_) {
-            planAndPublishPath(*last_goal_);
-        }
     }
 
-    void setpointCallback(const px4_msgs::msg::TrajectorySetpoint::SharedPtr msg) {
-        RCLCPP_INFO(this->get_logger(), "Received new setpoint");
-
-        // Convert TrajectorySetpoint to PoseStamped
-        geometry_msgs::msg::PoseStamped goal;
-        goal.header.stamp = this->now();
-        goal.header.frame_id = frame_id_;  // Ensure the frame matches the costmap
-        goal.pose.position.x = msg->position[0];
-        goal.pose.position.y = msg->position[1];
-        goal.pose.position.z = msg->position[2];
-        // Convert yaw to quaternion
-        float yaw = msg->yaw;
-        goal.pose.orientation.x = 0.0;
-        goal.pose.orientation.y = 0.0;
-        goal.pose.orientation.z = std::sin(yaw / 2.0);
-        goal.pose.orientation.w = std::cos(yaw / 2.0);
-
-        last_goal_ = std::make_shared<geometry_msgs::msg::PoseStamped>(goal);
-        planAndPublishPath(goal);
-    }
-
-    void debugCurrentPositionCost() {
+    void pathCallback(const nav_msgs::msg::Path::SharedPtr msg) {
         if (!costmap_) {
-            RCLCPP_WARN(this->get_logger(), "Costmap not available for debugging");
+            RCLCPP_ERROR(this->get_logger(), "Costmap not available for path planning");
             return;
         }
 
-        // Assume the robot's current position is at the origin of the costmap
-        int current_x = static_cast<int>((0.0 - costmap_->info.origin.position.x) / costmap_->info.resolution);
-        int current_y = static_cast<int>((0.0 - costmap_->info.origin.position.y) / costmap_->info.resolution);
-
-        if (current_x < 0 || current_x >= static_cast<int>(costmap_->info.width) ||
-            current_y < 0 || current_y >= static_cast<int>(costmap_->info.height)) {
-            RCLCPP_WARN(this->get_logger(), "Current position is outside the costmap bounds");
+        if (msg->poses.empty()) {
+            RCLCPP_WARN(this->get_logger(), "Received empty Path message");
             return;
         }
 
-        int index = current_y * costmap_->info.width + current_x;
-        int cost = costmap_->data[index];
+        RCLCPP_INFO(this->get_logger(), "Received Path with %zu poses", msg->poses.size());
 
-        if (cost == -1) {
-            RCLCPP_INFO(this->get_logger(), "Current position cost: Unobserved (free space)");
-        } else {
-            RCLCPP_INFO(this->get_logger(), "Current position cost: %d", cost);
+        // Plan a path through all the poses in the Path message
+        nav_msgs::msg::Path planned_path;
+        planned_path.header.stamp = this->now();
+        planned_path.header.frame_id = costmap_->header.frame_id;
+
+        for (size_t i = 0; i < msg->poses.size() - 1; ++i) {
+            const auto &start_pose = msg->poses[i];
+            const auto &goal_pose = msg->poses[i + 1];
+
+            // Transform start and goal poses to the costmap frame
+            geometry_msgs::msg::PoseStamped transformed_start, transformed_goal;
+            try {
+                transformed_start = tf_buffer_->transform(start_pose, costmap_->header.frame_id, tf2::durationFromSec(0.1));
+                transformed_goal = tf_buffer_->transform(goal_pose, costmap_->header.frame_id, tf2::durationFromSec(0.1));
+            } catch (const tf2::TransformException &ex) {
+                RCLCPP_ERROR(this->get_logger(), "Transform failed: %s", ex.what());
+                return;
+            }
+
+            // Plan a path between the current pose and the next pose
+            auto segment_path = planPath(transformed_start, transformed_goal);
+
+            // Append the segment to the planned path
+            planned_path.poses.insert(planned_path.poses.end(), segment_path.begin(), segment_path.end());
         }
-    }
-    void planAndPublishPath(const geometry_msgs::msg::PoseStamped &goal) {
-        if (!costmap_) {
-            RCLCPP_ERROR(this->get_logger(), "Costmap not available yet");
-            return;
-        }
-    
-        // Get the current position of the robot in the costmap frame
-        geometry_msgs::msg::PoseStamped current_position;
-        try {
-            geometry_msgs::msg::TransformStamped transform = tf_buffer_->lookupTransform(
-                costmap_->header.frame_id, frame_id_, tf2::TimePointZero);
-    
-            current_position.pose.position.x = transform.transform.translation.x;
-            current_position.pose.position.y = transform.transform.translation.y;
-            current_position.pose.position.z = transform.transform.translation.z;
-            current_position.header.frame_id = costmap_->header.frame_id;
-        } catch (const tf2::TransformException &ex) {
-            RCLCPP_ERROR(this->get_logger(), "Failed to get transform: %s", ex.what());
-            return;
-        }
-    
-        // Plan the path to the goal
-        auto path_poses = planPath(current_position, goal);
-        if (path_poses.empty()) {
-            RCLCPP_ERROR(this->get_logger(), "Failed to plan a path to the setpoint");
-            return;
-        }
-    
-        // Create a nav_msgs::msg::Path message
-        nav_msgs::msg::Path path_msg;
-        path_msg.header.stamp = this->now();
-        path_msg.header.frame_id = costmap_->header.frame_id;
-        path_msg.poses = path_poses;
-    
-        // Publish the path
-        path_pub_->publish(path_msg);
+
+        // Publish the planned path
+        path_pub_->publish(planned_path);
+        RCLCPP_INFO(this->get_logger(), "Published planned path with %zu poses", planned_path.poses.size());
     }
 
     std::vector<geometry_msgs::msg::PoseStamped> planPath(
@@ -205,15 +152,7 @@ private:
             goal_y = std::clamp(goal_y, 0, height - 1);
         }
     
-        // Check if the start or goal is in an obstacle
-        if (costmap_->data[toIndex(start_x, start_y)] > obstacle_threshold_) {
-            RCLCPP_WARN(this->get_logger(), "Start position is in an obstacle. Assuming free space.");
-        }
-        if (costmap_->data[toIndex(goal_x, goal_y)] > obstacle_threshold_) {
-            RCLCPP_WARN(this->get_logger(), "Goal position is in an obstacle. Assuming free space.");
-        }
-    
-        // A* algorithm for horizontal movement
+        // A* algorithm
         std::priority_queue<AStarNode, std::vector<AStarNode>, std::greater<AStarNode>> open_list;
         std::unordered_map<int, int> came_from;
         std::unordered_map<int, float> cost_so_far;
@@ -254,105 +193,26 @@ private:
                 }
             }
         }
-
+    
         // Reconstruct the path
         std::vector<geometry_msgs::msg::PoseStamped> path;
         int current_index = toIndex(goal_x, goal_y);
-        float z_start = start.pose.position.z;
-        float z_goal = goal.pose.position.z;
-
-        // Calculate the total number of steps in the path
-        std::vector<int> reverse_indices;
-        int temp_index = current_index;
-        while (came_from.count(temp_index)) {
-            reverse_indices.push_back(temp_index);
-            temp_index = came_from[temp_index];
-        }
-        reverse_indices.push_back(toIndex(start_x, start_y)); // Include the start position
-
-        // Ensure there are steps to interpolate
-        int total_steps = reverse_indices.size();
-        if (total_steps <= 1) {
-            RCLCPP_WARN(this->get_logger(), "Path has insufficient steps for interpolation. Creating a direct path.");
-
-            // Special case: Directly create a path with the start and goal positions
-            std::vector<geometry_msgs::msg::PoseStamped> direct_path;
-
-            // Add the start position
-            geometry_msgs::msg::PoseStamped start_pose;
-            start_pose.header.frame_id = costmap_->header.frame_id;
-            start_pose.pose.position.x = start.pose.position.x;
-            start_pose.pose.position.y = start.pose.position.y;
-            start_pose.pose.position.z = start.pose.position.z;
-            direct_path.push_back(start_pose);
-
-            // Add the goal position
-            geometry_msgs::msg::PoseStamped goal_pose;
-            goal_pose.header.frame_id = costmap_->header.frame_id;
-            goal_pose.pose.position.x = goal.pose.position.x;
-            goal_pose.pose.position.y = goal.pose.position.y;
-            goal_pose.pose.position.z = goal.pose.position.z;
-            direct_path.push_back(goal_pose);
-
-            return direct_path;
-        }
-
-        // Extract x-y coordinates from reverse_indices
-        std::vector<std::pair<float, float>> xy_points;
-        for (int i = 0; i < total_steps; ++i) {
-            int index = reverse_indices[total_steps - 1 - i]; // Reverse the order
-            int x = index % width;
-            int y = index / width;
-            float world_x = x * resolution + costmap_->info.origin.position.x;
-            float world_y = y * resolution + costmap_->info.origin.position.y;
-            xy_points.emplace_back(world_x, world_y);
-        }
-
-        // Calculate the z-step for interpolation
-        float z_step = (z_goal - z_start) / (xy_points.size() - 1); // Linear interpolation step
-
-        // Reconstruct the path with z-coordinate
-        for (size_t i = 0; i < xy_points.size(); ++i) {
+        while (came_from.count(current_index)) {
+            int x = current_index % width;
+            int y = current_index / width;
+    
             geometry_msgs::msg::PoseStamped pose;
             pose.header.frame_id = costmap_->header.frame_id;
-            pose.pose.position.x = xy_points[i].first;
-            pose.pose.position.y = xy_points[i].second;
-            pose.pose.position.z = z_start + (z_step * i); // Interpolate z-coordinate
+            pose.pose.position.x = x * resolution + costmap_->info.origin.position.x;
+            pose.pose.position.y = y * resolution + costmap_->info.origin.position.y;
+            pose.pose.position.z = start.pose.position.z; // Keep the same z-coordinate
             path.push_back(pose);
+    
+            current_index = came_from[current_index];
         }
-
-        // Smooth the entire 3D path (x, y, z)
-        std::vector<geometry_msgs::msg::PoseStamped> smoothed_path;
-        // Add the start position explicitly
-        smoothed_path.push_back(path.front()); // Preserve the start position
-
-
-        int smoothing_window = smoothing_window_;
-        for (size_t i = 1; i < path.size() - 1; ++i) { // Exclude the first and last points
-            float sum_x = 0.0, sum_y = 0.0, sum_z = 0.0;
-            int count = 0;
-            for (int j = -smoothing_window; j <= smoothing_window; ++j) {
-                int idx = i + j;
-                if (idx >= 0 && idx < static_cast<int>(path.size())) {
-                    sum_x += path[idx].pose.position.x;
-                    sum_y += path[idx].pose.position.y;
-                    sum_z += path[idx].pose.position.z;
-                    count++;
-                }
-            }
-
-            geometry_msgs::msg::PoseStamped smoothed_pose;
-            smoothed_pose.header.frame_id = costmap_->header.frame_id;
-            smoothed_pose.pose.position.x = sum_x / count;
-            smoothed_pose.pose.position.y = sum_y / count;
-            smoothed_pose.pose.position.z = sum_z / count;
-            smoothed_path.push_back(smoothed_pose);
-        }
-
-        // Add the final goal position to ensure accuracy
-        smoothed_path.push_back(goal);
-
-        return smoothed_path;
+    
+        std::reverse(path.begin(), path.end());
+        return path;
     }
 };
 

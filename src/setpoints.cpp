@@ -44,7 +44,7 @@ public:
 
         // Subscribe to the Path topic
         path_subscriber_ = this->create_subscription<Path>(
-            "in/trajectory_path", qos_profile, [this](const Path::SharedPtr msg) {
+            "/in/trajectory_path", qos_profile, [this](const Path::SharedPtr msg) {
                 if (!msg->poses.empty()) {
                     RCLCPP_INFO(this->get_logger(), "Received Path with %zu poses", msg->poses.size());
 
