@@ -173,18 +173,57 @@ private:
         int goal_x = static_cast<int>((goal.pose.position.x - costmap_->info.origin.position.x) / resolution);
         int goal_y = static_cast<int>((goal.pose.position.y - costmap_->info.origin.position.y) / resolution);
 
+        // Handle vertical movement if the goal is directly above or below the start
+        if (start_x == goal_x && start_y == goal_y) {
+            RCLCPP_INFO(this->get_logger(), "Goal is directly above or below the start. Planning vertical path.");
+            std::vector<geometry_msgs::msg::PoseStamped> path;
+
+            float z_step = 1.0; // Step size for vertical movement
+            float z_start = start.pose.position.z;
+            float z_goal = goal.pose.position.z;
+
+            if (z_start < z_goal) {
+                for (float z = z_start; z <= z_goal; z += z_step) {
+                    geometry_msgs::msg::PoseStamped pose;
+                    pose.header.frame_id = costmap_->header.frame_id;
+                    pose.pose.position.x = start.pose.position.x;
+                    pose.pose.position.y = start.pose.position.y;
+                    pose.pose.position.z = z;
+                    path.push_back(pose);
+                }
+            } else {
+                for (float z = z_start; z >= z_goal; z -= z_step) {
+                    geometry_msgs::msg::PoseStamped pose;
+                    pose.header.frame_id = costmap_->header.frame_id;
+                    pose.pose.position.x = start.pose.position.x;
+                    pose.pose.position.y = start.pose.position.y;
+                    pose.pose.position.z = z;
+                    path.push_back(pose);
+                }
+            }
+
+            // Add the final goal position
+            geometry_msgs::msg::PoseStamped final_pose = goal;
+            path.push_back(final_pose);
+
+            return path;
+        }
+
+        // Check if the start or goal is outside the costmap bounds
         if (start_x < 0 || start_x >= width || start_y < 0 || start_y >= height ||
             goal_x < 0 || goal_x >= width || goal_y < 0 || goal_y >= height) {
             RCLCPP_ERROR(this->get_logger(), "Start or goal is outside the costmap bounds");
             return {};
         }
 
+        // Check if the start or goal is in an obstacle
         if (costmap_->data[toIndex(start_x, start_y)] > obstacle_threshold_ ||
             costmap_->data[toIndex(goal_x, goal_y)] > obstacle_threshold_) {
             RCLCPP_ERROR(this->get_logger(), "Start or goal is in an obstacle");
             return {};
         }
 
+        // A* algorithm for horizontal movement
         std::priority_queue<AStarNode, std::vector<AStarNode>, std::greater<AStarNode>> open_list;
         std::unordered_map<int, int> came_from;
         std::unordered_map<int, float> cost_so_far;
@@ -226,6 +265,7 @@ private:
             }
         }
 
+        // Reconstruct the path
         std::vector<geometry_msgs::msg::PoseStamped> path;
         int current_index = toIndex(goal_x, goal_y);
         while (came_from.count(current_index)) {
@@ -235,12 +275,17 @@ private:
             pose.header.frame_id = costmap_->header.frame_id;
             pose.pose.position.x = x * resolution + costmap_->info.origin.position.x;
             pose.pose.position.y = y * resolution + costmap_->info.origin.position.y;
-            pose.pose.position.z = 0.0;
+            pose.pose.position.z = start.pose.position.z; // Use the z-coordinate from the start
             path.push_back(pose);
             current_index = came_from[current_index];
         }
 
         std::reverse(path.begin(), path.end());
+
+        // Add the final goal position with the correct z-coordinate
+        geometry_msgs::msg::PoseStamped final_pose = goal;
+        path.push_back(final_pose);
+
         return path;
     }
 };
