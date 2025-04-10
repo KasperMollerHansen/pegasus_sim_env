@@ -27,9 +27,11 @@ public:
         // Declare and retrieve parameters
         this->declare_parameter<int>("obstacle_threshold", 50);
         this->declare_parameter<std::string>("frame_id", "base_link");
+        this->get_parameter("smoothing_window", 4);
 
         obstacle_threshold_ = this->get_parameter("obstacle_threshold").as_int();
         frame_id_ = this->get_parameter("frame_id").as_string();
+        smoothing_window_ = this->get_parameter("smoothing_window").as_int();
 
         tf_buffer_ = std::make_shared<tf2_ros::Buffer>(this->get_clock());
         tf_listener_ = std::make_shared<tf2_ros::TransformListener>(*tf_buffer_);
@@ -251,6 +253,7 @@ private:
                 }
             }
         }
+        
 
         // Reconstruct the path
         std::vector<geometry_msgs::msg::PoseStamped> path;
@@ -270,23 +273,67 @@ private:
         // Ensure there are steps to interpolate
         int total_steps = reverse_indices.size();
         if (total_steps <= 1) {
-            RCLCPP_WARN(this->get_logger(), "Path has insufficient steps for interpolation.");
-            return {};
+            RCLCPP_WARN(this->get_logger(), "Path has insufficient steps for interpolation. Creating a direct path.");
+
+            // Special case: Directly create a path with the start and goal positions
+            std::vector<geometry_msgs::msg::PoseStamped> direct_path;
+        
+            // Add the start position
+            geometry_msgs::msg::PoseStamped start_pose;
+            start_pose.header.frame_id = costmap_->header.frame_id;
+            start_pose.pose.position.x = start.pose.position.x;
+            start_pose.pose.position.y = start.pose.position.y;
+            start_pose.pose.position.z = start.pose.position.z;
+            direct_path.push_back(start_pose);
+        
+            // Add the goal position
+            geometry_msgs::msg::PoseStamped goal_pose;
+            goal_pose.header.frame_id = costmap_->header.frame_id;
+            goal_pose.pose.position.x = goal.pose.position.x;
+            goal_pose.pose.position.y = goal.pose.position.y;
+            goal_pose.pose.position.z = goal.pose.position.z;
+            direct_path.push_back(goal_pose);
+        
+            return direct_path;
         }
 
-        // Calculate the z-step for interpolation
-        float z_step = (z_goal - z_start) / (total_steps - 1); // Linear interpolation step
-
-        // Reconstruct the path in reverse order
+        // Extract x-y coordinates from reverse_indices
+        std::vector<std::pair<float, float>> xy_points;
         for (int i = 0; i < total_steps; ++i) {
             int index = reverse_indices[total_steps - 1 - i]; // Reverse the order
             int x = index % width;
             int y = index / width;
+            float world_x = x * resolution + costmap_->info.origin.position.x;
+            float world_y = y * resolution + costmap_->info.origin.position.y;
+            xy_points.emplace_back(world_x, world_y);
+        }
 
+        // Smooth the x-y coordinates using a simple moving average
+        std::vector<std::pair<float, float>> smoothed_xy_points;
+        int smoothing_window = smoothing_window_;
+        for (size_t i = 0; i < xy_points.size(); ++i) {
+            float sum_x = 0.0, sum_y = 0.0;
+            int count = 0;
+            for (int j = -smoothing_window; j <= smoothing_window; ++j) {
+                int idx = i + j;
+                if (idx >= 0 && idx < static_cast<int>(xy_points.size())) {
+                    sum_x += xy_points[idx].first;
+                    sum_y += xy_points[idx].second;
+                    count++;
+                }
+            }
+            smoothed_xy_points.emplace_back(sum_x / count, sum_y / count);
+        }
+
+        // Calculate the z-step for interpolation
+        float z_step = (z_goal - z_start) / (smoothed_xy_points.size() - 1); // Linear interpolation step
+
+        // Reconstruct the smoothed path with z-coordinate
+        for (size_t i = 0; i < smoothed_xy_points.size(); ++i) {
             geometry_msgs::msg::PoseStamped pose;
             pose.header.frame_id = costmap_->header.frame_id;
-            pose.pose.position.x = x * resolution + costmap_->info.origin.position.x;
-            pose.pose.position.y = y * resolution + costmap_->info.origin.position.y;
+            pose.pose.position.x = smoothed_xy_points[i].first;
+            pose.pose.position.y = smoothed_xy_points[i].second;
             pose.pose.position.z = z_start + (z_step * i); // Interpolate z-coordinate
             path.push_back(pose);
         }
