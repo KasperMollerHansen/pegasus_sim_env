@@ -6,7 +6,7 @@
 #include <tf2_ros/transform_listener.h>
 #include <tf2_ros/buffer.h>
 #include <geometry_msgs/msg/transform_stamped.hpp>
-#include <tf2_geometry_msgs/tf2_geometry_msgs.hpp> // Updated header
+#include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
 #include <vector>
 #include <queue>
 #include <cmath>
@@ -37,7 +37,7 @@ public:
         tf_buffer_ = std::make_shared<tf2_ros::Buffer>(this->get_clock());
         tf_listener_ = std::make_shared<tf2_ros::TransformListener>(*tf_buffer_);
 
-        // QoS profile matching the TestFlight node
+        // QoS profile for subscriptions
         rclcpp::QoS qos_profile(rclcpp::KeepLast(1));
         qos_profile.reliability(RMW_QOS_POLICY_RELIABILITY_BEST_EFFORT);
         qos_profile.durability(RMW_QOS_POLICY_DURABILITY_TRANSIENT_LOCAL);
@@ -85,35 +85,53 @@ private:
 
         RCLCPP_INFO(this->get_logger(), "Received Path with %zu poses", msg->poses.size());
 
-        // Plan a path through all the poses in the Path message
+        // Get the robot's current position in the costmap frame
+        geometry_msgs::msg::PoseStamped current_position;
+        try {
+            geometry_msgs::msg::TransformStamped transform = tf_buffer_->lookupTransform(
+                costmap_->header.frame_id, frame_id_, tf2::TimePointZero);
+
+            current_position.pose.position.x = transform.transform.translation.x;
+            current_position.pose.position.y = transform.transform.translation.y;
+            current_position.pose.position.z = transform.transform.translation.z;
+            current_position.header.frame_id = costmap_->header.frame_id;
+        } catch (const tf2::TransformException &ex) {
+            RCLCPP_ERROR(this->get_logger(), "Failed to get transform: %s", ex.what());
+            return;
+        }
+
+        // Initialize the planned path
         nav_msgs::msg::Path planned_path;
         planned_path.header.stamp = this->now();
         planned_path.header.frame_id = costmap_->header.frame_id;
 
-        for (size_t i = 0; i < msg->poses.size() - 1; ++i) {
-            const auto &start_pose = msg->poses[i];
-            const auto &goal_pose = msg->poses[i + 1];
+        // Plan paths sequentially between points
+        geometry_msgs::msg::PoseStamped start = current_position;
+        for (const auto &goal : msg->poses) {
+            // Plan the path from the current start to the goal
+            auto segment_path = planPath(start, goal);
 
-            // Transform start and goal poses to the costmap frame
-            geometry_msgs::msg::PoseStamped transformed_start, transformed_goal;
-            try {
-                transformed_start = tf_buffer_->transform(start_pose, costmap_->header.frame_id, tf2::durationFromSec(0.1));
-                transformed_goal = tf_buffer_->transform(goal_pose, costmap_->header.frame_id, tf2::durationFromSec(0.1));
-            } catch (const tf2::TransformException &ex) {
-                RCLCPP_ERROR(this->get_logger(), "Transform failed: %s", ex.what());
+            if (segment_path.empty()) {
+                RCLCPP_ERROR(this->get_logger(), "Failed to plan a path between points");
                 return;
             }
 
-            // Plan a path between the current pose and the next pose
-            auto segment_path = planPath(transformed_start, transformed_goal);
-
-            // Append the segment to the planned path
+            // Concatenate the segment to the planned path
             planned_path.poses.insert(planned_path.poses.end(), segment_path.begin(), segment_path.end());
+
+            // Update the start for the next segment
+            start = goal;
         }
 
-        // Publish the planned path
+        // Smooth the concatenated path
+        auto smoothed_path = smoothPath(planned_path.poses);
+
+        // Update the planned path with the smoothed poses
+        planned_path.poses = smoothed_path;
+
+        // Publish the smoothed path
         path_pub_->publish(planned_path);
-        RCLCPP_INFO(this->get_logger(), "Published planned path with %zu poses", planned_path.poses.size());
+        RCLCPP_INFO(this->get_logger(), "Published smoothed path with %zu poses", planned_path.poses.size());
     }
 
     std::vector<geometry_msgs::msg::PoseStamped> planPath(
@@ -123,67 +141,62 @@ private:
             RCLCPP_ERROR(this->get_logger(), "No costmap available");
             return {};
         }
-    
+
         int width = costmap_->info.width;
         int height = costmap_->info.height;
         float resolution = costmap_->info.resolution;
-    
+
         auto toIndex = [&](int x, int y) { return y * width + x; };
-    
+
         auto heuristic = [&](int x1, int y1, int x2, int y2) {
             return std::sqrt(std::pow(x1 - x2, 2) + std::pow(y1 - y2, 2));
         };
-    
+
         int start_x = static_cast<int>((start.pose.position.x - costmap_->info.origin.position.x) / resolution);
         int start_y = static_cast<int>((start.pose.position.y - costmap_->info.origin.position.y) / resolution);
         int goal_x = static_cast<int>((goal.pose.position.x - costmap_->info.origin.position.x) / resolution);
         int goal_y = static_cast<int>((goal.pose.position.y - costmap_->info.origin.position.y) / resolution);
-    
-        // Handle out-of-bounds start or goal positions
-        if (start_x < 0 || start_x >= width || start_y < 0 || start_y >= height) {
-            RCLCPP_WARN(this->get_logger(), "Start position is outside the costmap bounds. Assuming free space.");
-            start_x = std::clamp(start_x, 0, width - 1);
-            start_y = std::clamp(start_y, 0, height - 1);
+
+        // Check if the start or goal is in an obstacle
+        if (costmap_->data[toIndex(start_x, start_y)] > obstacle_threshold_) {
+            RCLCPP_WARN(this->get_logger(), "Start position is in an obstacle. Assuming free space.");
         }
-    
-        if (goal_x < 0 || goal_x >= width || goal_y < 0 || goal_y >= height) {
-            RCLCPP_WARN(this->get_logger(), "Goal position is outside the costmap bounds. Assuming free space.");
-            goal_x = std::clamp(goal_x, 0, width - 1);
-            goal_y = std::clamp(goal_y, 0, height - 1);
+        if (costmap_->data[toIndex(goal_x, goal_y)] > obstacle_threshold_) {
+            RCLCPP_WARN(this->get_logger(), "Goal position is in an obstacle. Assuming free space.");
         }
-    
+
         // A* algorithm
         std::priority_queue<AStarNode, std::vector<AStarNode>, std::greater<AStarNode>> open_list;
         std::unordered_map<int, int> came_from;
         std::unordered_map<int, float> cost_so_far;
-    
+
         open_list.push({start_x, start_y, 0});
         cost_so_far[toIndex(start_x, start_y)] = 0;
-    
+
         std::vector<int> dx = {1, -1, 0, 0};
         std::vector<int> dy = {0, 0, 1, -1};
-    
+
         while (!open_list.empty()) {
             AStarNode current = open_list.top();
             open_list.pop();
-    
+
             if (current.x == goal_x && current.y == goal_y) {
                 break;
             }
-    
+
             for (size_t i = 0; i < dx.size(); ++i) {
                 int next_x = current.x + dx[i];
                 int next_y = current.y + dy[i];
-    
+
                 if (next_x < 0 || next_y < 0 || next_x >= width || next_y >= height) {
                     continue;
                 }
-    
+
                 int index = toIndex(next_x, next_y);
                 if (costmap_->data[index] > obstacle_threshold_) { // Obstacle threshold
                     continue;
                 }
-    
+
                 float new_cost = cost_so_far[toIndex(current.x, current.y)] + 1;
                 if (!cost_so_far.count(index) || new_cost < cost_so_far[index]) {
                     cost_so_far[index] = new_cost;
@@ -193,26 +206,109 @@ private:
                 }
             }
         }
-    
+
         // Reconstruct the path
         std::vector<geometry_msgs::msg::PoseStamped> path;
         int current_index = toIndex(goal_x, goal_y);
-        while (came_from.count(current_index)) {
-            int x = current_index % width;
-            int y = current_index / width;
-    
+        float z_start = start.pose.position.z;
+        float z_goal = goal.pose.position.z;
+
+        // Calculate the total number of steps in the path
+        std::vector<int> reverse_indices;
+        int temp_index = current_index;
+        while (came_from.count(temp_index)) {
+            reverse_indices.push_back(temp_index);
+            temp_index = came_from[temp_index];
+        }
+        reverse_indices.push_back(toIndex(start_x, start_y)); // Include the start position
+
+        // Ensure there are steps to interpolate
+        int total_steps = reverse_indices.size();
+        if (total_steps <= 1) {
+            RCLCPP_WARN(this->get_logger(), "Path has insufficient steps for interpolation. Creating a direct path.");
+
+            // Special case: Directly create a path with the start and goal positions
+            std::vector<geometry_msgs::msg::PoseStamped> direct_path;
+
+            // Add the start position
+            geometry_msgs::msg::PoseStamped start_pose;
+            start_pose.header.frame_id = costmap_->header.frame_id;
+            start_pose.pose.position.x = start.pose.position.x;
+            start_pose.pose.position.y = start.pose.position.y;
+            start_pose.pose.position.z = start.pose.position.z;
+            direct_path.push_back(start_pose);
+
+            // Add the goal position
+            geometry_msgs::msg::PoseStamped goal_pose;
+            goal_pose.header.frame_id = costmap_->header.frame_id;
+            goal_pose.pose.position.x = goal.pose.position.x;
+            goal_pose.pose.position.y = goal.pose.position.y;
+            goal_pose.pose.position.z = goal.pose.position.z;
+            direct_path.push_back(goal_pose);
+
+            return direct_path;
+        }
+
+        // Extract x-y coordinates from reverse_indices
+        std::vector<std::pair<float, float>> xy_points;
+        for (int i = 0; i < total_steps; ++i) {
+            int index = reverse_indices[total_steps - 1 - i]; // Reverse the order
+            int x = index % width;
+            int y = index / width;
+            float world_x = x * resolution + costmap_->info.origin.position.x;
+            float world_y = y * resolution + costmap_->info.origin.position.y;
+            xy_points.emplace_back(world_x, world_y);
+        }
+
+        // Calculate the z-step for interpolation
+        float z_step = (z_goal - z_start) / (xy_points.size() - 1); // Linear interpolation step
+
+        // Reconstruct the path with z-coordinate
+        for (size_t i = 0; i < xy_points.size(); ++i) {
             geometry_msgs::msg::PoseStamped pose;
             pose.header.frame_id = costmap_->header.frame_id;
-            pose.pose.position.x = x * resolution + costmap_->info.origin.position.x;
-            pose.pose.position.y = y * resolution + costmap_->info.origin.position.y;
-            pose.pose.position.z = start.pose.position.z; // Keep the same z-coordinate
+            pose.pose.position.x = xy_points[i].first;
+            pose.pose.position.y = xy_points[i].second;
+            pose.pose.position.z = z_start + (z_step * i); // Interpolate z-coordinate
             path.push_back(pose);
-    
-            current_index = came_from[current_index];
         }
-    
-        std::reverse(path.begin(), path.end());
+
         return path;
+    }
+
+    std::vector<geometry_msgs::msg::PoseStamped> smoothPath(const std::vector<geometry_msgs::msg::PoseStamped> &path) {
+        if (path.size() <= 2) {
+            // No smoothing needed for paths with 2 or fewer points
+            return path;
+        }
+
+        std::vector<geometry_msgs::msg::PoseStamped> smoothed_path;
+        smoothed_path.push_back(path.front()); // Preserve the start position
+
+        int smoothing_window = smoothing_window_;
+        for (size_t i = 1; i < path.size() - 1; ++i) { // Exclude the first and last points
+            float sum_x = 0.0, sum_y = 0.0, sum_z = 0.0;
+            int count = 0;
+            for (int j = -smoothing_window; j <= smoothing_window; ++j) {
+                int idx = i + j;
+                if (idx >= 0 && idx < static_cast<int>(path.size())) {
+                    sum_x += path[idx].pose.position.x;
+                    sum_y += path[idx].pose.position.y;
+                    sum_z += path[idx].pose.position.z;
+                    count++;
+                }
+            }
+
+            geometry_msgs::msg::PoseStamped smoothed_pose;
+            smoothed_pose.header.frame_id = path[i].header.frame_id;
+            smoothed_pose.pose.position.x = sum_x / count;
+            smoothed_pose.pose.position.y = sum_y / count;
+            smoothed_pose.pose.position.z = sum_z / count;
+            smoothed_path.push_back(smoothed_pose);
+        }
+
+        smoothed_path.push_back(path.back()); // Preserve the end position
+        return smoothed_path;
     }
 };
 
