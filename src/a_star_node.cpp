@@ -27,7 +27,7 @@ public:
         // Declare and retrieve parameters
         this->declare_parameter<int>("obstacle_threshold", 50);
         this->declare_parameter<std::string>("frame_id", "base_link");
-        this->get_parameter("smoothing_window", 4);
+        this->declare_parameter<int>("smoothing_window", 4);
 
         obstacle_threshold_ = this->get_parameter("obstacle_threshold").as_int();
         frame_id_ = this->get_parameter("frame_id").as_string();
@@ -71,6 +71,7 @@ private:
 
     nav_msgs::msg::OccupancyGrid::SharedPtr costmap_;
     int obstacle_threshold_;
+    int smoothing_window_;
     std::string frame_id_;
     geometry_msgs::msg::PoseStamped::SharedPtr last_goal_;
 
@@ -253,7 +254,6 @@ private:
                 }
             }
         }
-        
 
         // Reconstruct the path
         std::vector<geometry_msgs::msg::PoseStamped> path;
@@ -277,7 +277,7 @@ private:
 
             // Special case: Directly create a path with the start and goal positions
             std::vector<geometry_msgs::msg::PoseStamped> direct_path;
-        
+
             // Add the start position
             geometry_msgs::msg::PoseStamped start_pose;
             start_pose.header.frame_id = costmap_->header.frame_id;
@@ -285,7 +285,7 @@ private:
             start_pose.pose.position.y = start.pose.position.y;
             start_pose.pose.position.z = start.pose.position.z;
             direct_path.push_back(start_pose);
-        
+
             // Add the goal position
             geometry_msgs::msg::PoseStamped goal_pose;
             goal_pose.header.frame_id = costmap_->header.frame_id;
@@ -293,7 +293,7 @@ private:
             goal_pose.pose.position.y = goal.pose.position.y;
             goal_pose.pose.position.z = goal.pose.position.z;
             direct_path.push_back(goal_pose);
-        
+
             return direct_path;
         }
 
@@ -308,41 +308,51 @@ private:
             xy_points.emplace_back(world_x, world_y);
         }
 
-        // Smooth the x-y coordinates using a simple moving average
-        std::vector<std::pair<float, float>> smoothed_xy_points;
-        int smoothing_window = smoothing_window_;
-        for (size_t i = 0; i < xy_points.size(); ++i) {
-            float sum_x = 0.0, sum_y = 0.0;
-            int count = 0;
-            for (int j = -smoothing_window; j <= smoothing_window; ++j) {
-                int idx = i + j;
-                if (idx >= 0 && idx < static_cast<int>(xy_points.size())) {
-                    sum_x += xy_points[idx].first;
-                    sum_y += xy_points[idx].second;
-                    count++;
-                }
-            }
-            smoothed_xy_points.emplace_back(sum_x / count, sum_y / count);
-        }
-
         // Calculate the z-step for interpolation
-        float z_step = (z_goal - z_start) / (smoothed_xy_points.size() - 1); // Linear interpolation step
+        float z_step = (z_goal - z_start) / (xy_points.size() - 1); // Linear interpolation step
 
-        // Reconstruct the smoothed path with z-coordinate
-        for (size_t i = 0; i < smoothed_xy_points.size(); ++i) {
+        // Reconstruct the path with z-coordinate
+        for (size_t i = 0; i < xy_points.size(); ++i) {
             geometry_msgs::msg::PoseStamped pose;
             pose.header.frame_id = costmap_->header.frame_id;
-            pose.pose.position.x = smoothed_xy_points[i].first;
-            pose.pose.position.y = smoothed_xy_points[i].second;
+            pose.pose.position.x = xy_points[i].first;
+            pose.pose.position.y = xy_points[i].second;
             pose.pose.position.z = z_start + (z_step * i); // Interpolate z-coordinate
             path.push_back(pose);
         }
 
-        // Add the final goal position with the correct z-coordinate
-        geometry_msgs::msg::PoseStamped final_pose = goal;
-        path.push_back(final_pose);
+        // Smooth the entire 3D path (x, y, z)
+        std::vector<geometry_msgs::msg::PoseStamped> smoothed_path;
+        // Add the start position explicitly
+        smoothed_path.push_back(path.front()); // Preserve the start position
 
-        return path;
+
+        int smoothing_window = smoothing_window_;
+        for (size_t i = 1; i < path.size() - 1; ++i) { // Exclude the first and last points
+            float sum_x = 0.0, sum_y = 0.0, sum_z = 0.0;
+            int count = 0;
+            for (int j = -smoothing_window; j <= smoothing_window; ++j) {
+                int idx = i + j;
+                if (idx >= 0 && idx < static_cast<int>(path.size())) {
+                    sum_x += path[idx].pose.position.x;
+                    sum_y += path[idx].pose.position.y;
+                    sum_z += path[idx].pose.position.z;
+                    count++;
+                }
+            }
+
+            geometry_msgs::msg::PoseStamped smoothed_pose;
+            smoothed_pose.header.frame_id = costmap_->header.frame_id;
+            smoothed_pose.pose.position.x = sum_x / count;
+            smoothed_pose.pose.position.y = sum_y / count;
+            smoothed_pose.pose.position.z = sum_z / count;
+            smoothed_path.push_back(smoothed_pose);
+        }
+
+        // Add the final goal position to ensure accuracy
+        smoothed_path.push_back(goal);
+
+        return smoothed_path;
     }
 };
 
