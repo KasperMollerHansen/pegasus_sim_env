@@ -81,6 +81,8 @@ ament_target_dependencies(a_star_node
   nav_msgs
   px4_msgs
   geometry_msgs
+  tf2
+  tf2_ros
 )
 
 install(TARGETS 

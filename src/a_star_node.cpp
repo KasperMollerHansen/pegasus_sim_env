@@ -3,6 +3,9 @@
 #include <nav_msgs/msg/path.hpp>
 #include <geometry_msgs/msg/pose_stamped.hpp>
 #include <px4_msgs/msg/trajectory_setpoint.hpp>
+#include <tf2_ros/transform_listener.h>
+#include <tf2_ros/buffer.h>
+#include <geometry_msgs/msg/transform_stamped.hpp>
 #include <vector>
 #include <queue>
 #include <cmath>
@@ -23,10 +26,13 @@ public:
     AStarPlanner() : Node("astar_planner") {
         // Declare and retrieve parameters
         this->declare_parameter<int>("obstacle_threshold", 50);
-        this->declare_parameter<std::string>("frame_id", "odom");
+        this->declare_parameter<std::string>("frame_id", "base_link");
 
         obstacle_threshold_ = this->get_parameter("obstacle_threshold").as_int();
         frame_id_ = this->get_parameter("frame_id").as_string();
+
+        tf_buffer_ = std::make_shared<tf2_ros::Buffer>(this->get_clock());
+        tf_listener_ = std::make_shared<tf2_ros::TransformListener>(*tf_buffer_);
 
         // QoS profile matching the TestFlight node
         rclcpp::QoS qos_profile(rclcpp::KeepLast(1));
@@ -57,6 +63,9 @@ private:
     rclcpp::Subscription<px4_msgs::msg::TrajectorySetpoint>::SharedPtr setpoints_sub_;
     rclcpp::Publisher<nav_msgs::msg::Path>::SharedPtr path_pub_;
     rclcpp::TimerBase::SharedPtr debug_timer_;
+
+    std::shared_ptr<tf2_ros::Buffer> tf_buffer_;
+    std::shared_ptr<tf2_ros::TransformListener> tf_listener_;
 
     nav_msgs::msg::OccupancyGrid::SharedPtr costmap_;
     int obstacle_threshold_;
@@ -119,33 +128,40 @@ private:
             RCLCPP_INFO(this->get_logger(), "Current position cost: %d", cost);
         }
     }
-
     void planAndPublishPath(const geometry_msgs::msg::PoseStamped &goal) {
         if (!costmap_) {
             RCLCPP_ERROR(this->get_logger(), "Costmap not available yet");
             return;
         }
-
-        // Assume the robot's current position is at the origin of the costmap
-        geometry_msgs::msg::PoseStamped start;
-        start.pose.position.x = 0.0;
-        start.pose.position.y = 0.0;
-        start.pose.position.z = 0.0;
-        start.header.frame_id = costmap_->header.frame_id;
-
+    
+        // Get the current position of the robot in the costmap frame
+        geometry_msgs::msg::PoseStamped current_position;
+        try {
+            geometry_msgs::msg::TransformStamped transform = tf_buffer_->lookupTransform(
+                costmap_->header.frame_id, frame_id_, tf2::TimePointZero);
+    
+            current_position.pose.position.x = transform.transform.translation.x;
+            current_position.pose.position.y = transform.transform.translation.y;
+            current_position.pose.position.z = transform.transform.translation.z;
+            current_position.header.frame_id = costmap_->header.frame_id;
+        } catch (const tf2::TransformException &ex) {
+            RCLCPP_ERROR(this->get_logger(), "Failed to get transform: %s", ex.what());
+            return;
+        }
+    
         // Plan the path to the goal
-        auto path_poses = planPath(start, goal);
+        auto path_poses = planPath(current_position, goal);
         if (path_poses.empty()) {
             RCLCPP_ERROR(this->get_logger(), "Failed to plan a path to the setpoint");
             return;
         }
-
+    
         // Create a nav_msgs::msg::Path message
         nav_msgs::msg::Path path_msg;
         path_msg.header.stamp = this->now();
         path_msg.header.frame_id = costmap_->header.frame_id;
         path_msg.poses = path_poses;
-
+    
         // Publish the path
         path_pub_->publish(path_msg);
     }
@@ -268,6 +284,11 @@ private:
         // Reconstruct the path
         std::vector<geometry_msgs::msg::PoseStamped> path;
         int current_index = toIndex(goal_x, goal_y);
+        float z_start = start.pose.position.z;
+        float z_goal = goal.pose.position.z;
+        float z_step = (z_goal - z_start) / (came_from.size() + 1); // Linear interpolation step
+
+        int step_count = 0;
         while (came_from.count(current_index)) {
             int x = current_index % width;
             int y = current_index / width;
@@ -275,9 +296,10 @@ private:
             pose.header.frame_id = costmap_->header.frame_id;
             pose.pose.position.x = x * resolution + costmap_->info.origin.position.x;
             pose.pose.position.y = y * resolution + costmap_->info.origin.position.y;
-            pose.pose.position.z = start.pose.position.z; // Use the z-coordinate from the start
+            pose.pose.position.z = z_start + (z_step * step_count); // Interpolate z-coordinate
             path.push_back(pose);
             current_index = came_from[current_index];
+            step_count++;
         }
 
         std::reverse(path.begin(), path.end());
