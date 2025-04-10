@@ -173,104 +173,75 @@ private:
             RCLCPP_ERROR(this->get_logger(), "No costmap available");
             return {};
         }
-
+    
         int width = costmap_->info.width;
         int height = costmap_->info.height;
         float resolution = costmap_->info.resolution;
-
+    
         auto toIndex = [&](int x, int y) { return y * width + x; };
-
+    
         auto heuristic = [&](int x1, int y1, int x2, int y2) {
             return std::sqrt(std::pow(x1 - x2, 2) + std::pow(y1 - y2, 2));
         };
-
+    
         int start_x = static_cast<int>((start.pose.position.x - costmap_->info.origin.position.x) / resolution);
         int start_y = static_cast<int>((start.pose.position.y - costmap_->info.origin.position.y) / resolution);
         int goal_x = static_cast<int>((goal.pose.position.x - costmap_->info.origin.position.x) / resolution);
         int goal_y = static_cast<int>((goal.pose.position.y - costmap_->info.origin.position.y) / resolution);
-
-        // Handle vertical movement if the goal is directly above or below the start
-        if (start_x == goal_x && start_y == goal_y) {
-            RCLCPP_INFO(this->get_logger(), "Goal is directly above or below the start. Planning vertical path.");
-            std::vector<geometry_msgs::msg::PoseStamped> path;
-
-            float z_step = 1.0; // Step size for vertical movement
-            float z_start = start.pose.position.z;
-            float z_goal = goal.pose.position.z;
-
-            if (z_start < z_goal) {
-                for (float z = z_start; z <= z_goal; z += z_step) {
-                    geometry_msgs::msg::PoseStamped pose;
-                    pose.header.frame_id = costmap_->header.frame_id;
-                    pose.pose.position.x = start.pose.position.x;
-                    pose.pose.position.y = start.pose.position.y;
-                    pose.pose.position.z = z;
-                    path.push_back(pose);
-                }
-            } else {
-                for (float z = z_start; z >= z_goal; z -= z_step) {
-                    geometry_msgs::msg::PoseStamped pose;
-                    pose.header.frame_id = costmap_->header.frame_id;
-                    pose.pose.position.x = start.pose.position.x;
-                    pose.pose.position.y = start.pose.position.y;
-                    pose.pose.position.z = z;
-                    path.push_back(pose);
-                }
-            }
-
-            // Add the final goal position
-            geometry_msgs::msg::PoseStamped final_pose = goal;
-            path.push_back(final_pose);
-
-            return path;
+    
+        // Handle out-of-bounds start or goal positions
+        if (start_x < 0 || start_x >= width || start_y < 0 || start_y >= height) {
+            RCLCPP_WARN(this->get_logger(), "Start position is outside the costmap bounds. Assuming free space.");
+            start_x = std::clamp(start_x, 0, width - 1);
+            start_y = std::clamp(start_y, 0, height - 1);
         }
-
-        // Check if the start or goal is outside the costmap bounds
-        if (start_x < 0 || start_x >= width || start_y < 0 || start_y >= height ||
-            goal_x < 0 || goal_x >= width || goal_y < 0 || goal_y >= height) {
-            RCLCPP_ERROR(this->get_logger(), "Start or goal is outside the costmap bounds");
-            return {};
+    
+        if (goal_x < 0 || goal_x >= width || goal_y < 0 || goal_y >= height) {
+            RCLCPP_WARN(this->get_logger(), "Goal position is outside the costmap bounds. Assuming free space.");
+            goal_x = std::clamp(goal_x, 0, width - 1);
+            goal_y = std::clamp(goal_y, 0, height - 1);
         }
-
+    
         // Check if the start or goal is in an obstacle
-        if (costmap_->data[toIndex(start_x, start_y)] > obstacle_threshold_ ||
-            costmap_->data[toIndex(goal_x, goal_y)] > obstacle_threshold_) {
-            RCLCPP_ERROR(this->get_logger(), "Start or goal is in an obstacle");
-            return {};
+        if (costmap_->data[toIndex(start_x, start_y)] > obstacle_threshold_) {
+            RCLCPP_WARN(this->get_logger(), "Start position is in an obstacle. Assuming free space.");
         }
-
+        if (costmap_->data[toIndex(goal_x, goal_y)] > obstacle_threshold_) {
+            RCLCPP_WARN(this->get_logger(), "Goal position is in an obstacle. Assuming free space.");
+        }
+    
         // A* algorithm for horizontal movement
         std::priority_queue<AStarNode, std::vector<AStarNode>, std::greater<AStarNode>> open_list;
         std::unordered_map<int, int> came_from;
         std::unordered_map<int, float> cost_so_far;
-
+    
         open_list.push({start_x, start_y, 0});
         cost_so_far[toIndex(start_x, start_y)] = 0;
-
+    
         std::vector<int> dx = {1, -1, 0, 0};
         std::vector<int> dy = {0, 0, 1, -1};
-
+    
         while (!open_list.empty()) {
             AStarNode current = open_list.top();
             open_list.pop();
-
+    
             if (current.x == goal_x && current.y == goal_y) {
                 break;
             }
-
+    
             for (size_t i = 0; i < dx.size(); ++i) {
                 int next_x = current.x + dx[i];
                 int next_y = current.y + dy[i];
-
+    
                 if (next_x < 0 || next_y < 0 || next_x >= width || next_y >= height) {
                     continue;
                 }
-
+    
                 int index = toIndex(next_x, next_y);
                 if (costmap_->data[index] > obstacle_threshold_) { // Obstacle threshold
                     continue;
                 }
-
+    
                 float new_cost = cost_so_far[toIndex(current.x, current.y)] + 1;
                 if (!cost_so_far.count(index) || new_cost < cost_so_far[index]) {
                     cost_so_far[index] = new_cost;
@@ -286,9 +257,19 @@ private:
         int current_index = toIndex(goal_x, goal_y);
         float z_start = start.pose.position.z;
         float z_goal = goal.pose.position.z;
-        float z_step = (z_goal - z_start) / (came_from.size() + 1); // Linear interpolation step
 
-        int step_count = 0;
+        // Calculate the total number of steps in the path
+        int total_steps = 0;
+        int temp_index = current_index;
+        while (came_from.count(temp_index)) {
+            temp_index = came_from[temp_index];
+            total_steps++;
+        }
+
+        // Calculate the z-step for interpolation
+        float z_step = (z_goal - z_start) / (total_steps + 1); // Linear interpolation step
+
+        int step_count = total_steps;
         while (came_from.count(current_index)) {
             int x = current_index % width;
             int y = current_index / width;
@@ -299,15 +280,15 @@ private:
             pose.pose.position.z = z_start + (z_step * step_count); // Interpolate z-coordinate
             path.push_back(pose);
             current_index = came_from[current_index];
-            step_count++;
+            step_count--;
         }
-
+    
         std::reverse(path.begin(), path.end());
-
+    
         // Add the final goal position with the correct z-coordinate
         geometry_msgs::msg::PoseStamped final_pose = goal;
         path.push_back(final_pose);
-
+    
         return path;
     }
 };
