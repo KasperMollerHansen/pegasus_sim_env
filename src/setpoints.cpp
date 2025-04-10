@@ -31,6 +31,17 @@ public:
         qos_profile.reliability(RMW_QOS_POLICY_RELIABILITY_BEST_EFFORT);
         qos_profile.durability(RMW_QOS_POLICY_DURABILITY_TRANSIENT_LOCAL);
 
+        // Create subscriber for vehicle control mode (to check the armed status)
+        arming_status_subscriber_ = this->create_subscription<VehicleControlMode>(
+            "/fmu/out/vehicle_control_mode", qos_profile, [this](const VehicleControlMode::SharedPtr msg) {
+                armed_ = msg->flag_armed;
+                if (armed_) {
+                    RCLCPP_INFO(this->get_logger(), "Drone is armed.");
+                } else {
+                    RCLCPP_INFO(this->get_logger(), "Drone is disarmed.");
+                }
+            });
+
         // Subscribe to the Path topic
         path_subscriber_ = this->create_subscription<Path>(
             "in/trajectory_path", qos_profile, [this](const Path::SharedPtr msg) {
@@ -43,9 +54,9 @@ public:
                     // Convert PoseStamped to TrajectorySetpoint
                     TrajectorySetpoint setpoint_msg{};
                     setpoint_msg.position = {
-                        static_cast<float>(first_pose.pose.position.x),
-                        static_cast<float>(first_pose.pose.position.y),
-                        static_cast<float>(first_pose.pose.position.z)
+                        static_cast<float>(first_pose.pose.position.y), // y
+                        static_cast<float>(first_pose.pose.position.x), // x
+                        static_cast<float>(-first_pose.pose.position.z) // -z
                     };
 
                     // Extract yaw from the quaternion and add M_PI / 2.0
@@ -57,7 +68,7 @@ public:
                     tf2::Matrix3x3 m(q);
                     double roll, pitch, yaw;
                     m.getRPY(roll, pitch, yaw);
-                    setpoint_msg.yaw = static_cast<float>(yaw + M_PI / 2.0); // Adjust yaw to pegasus
+                    setpoint_msg.yaw = static_cast<float>(-yaw + M_PI / 2.0); // Adjust yaw to pegasus
 
                     // Publish the TrajectorySetpoint
                     publish_offboard_control_mode();
@@ -83,6 +94,7 @@ private:
     rclcpp::Publisher<OffboardControlMode>::SharedPtr offboard_control_mode_publisher_;
     rclcpp::Publisher<TrajectorySetpoint>::SharedPtr trajectory_setpoint_publisher_;
     rclcpp::Publisher<VehicleCommand>::SharedPtr vehicle_command_publisher_;
+    rclcpp::Subscription<VehicleControlMode>::SharedPtr arming_status_subscriber_;
     rclcpp::Subscription<Path>::SharedPtr path_subscriber_;
 
     void publish_offboard_control_mode();
