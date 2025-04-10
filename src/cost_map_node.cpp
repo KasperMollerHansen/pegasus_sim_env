@@ -22,13 +22,15 @@ public:
     this->declare_parameter("local_map_size", 200.0);    // Local map size (200 m x 200 m)
     this->declare_parameter("global_map_size", 1500.0);  // Global map size (1500 m x 1500 m)
     this->declare_parameter("frame_id", "base_link");    // Map centered at base_link
-    this->declare_parameter("intensity_threshold", 20.0); // Intensity threshold for ESDF
+    this->declare_parameter("safety_distance_min", 5.0);  // Minimum safety distance
+    this->declare_parameter("safety_distance_max", 10.0);  // Maximum safety distance
 
     resolution_ = this->get_parameter("resolution").as_double();
     local_map_size_ = this->get_parameter("local_map_size").as_double();
     global_map_size_ = this->get_parameter("global_map_size").as_double();
     frame_id_ = this->get_parameter("frame_id").as_string();
-    intensity_threshold_ = this->get_parameter("intensity_threshold").as_double();
+    safety_distance_min_ = this->get_parameter("safety_distance_min").as_double();
+    safety_distance_max_ = this->get_parameter("safety_distance_max").as_double();
 
     // Compute grid dimensions
     local_grid_size_ = static_cast<int>(local_map_size_ / resolution_);
@@ -53,10 +55,10 @@ public:
     );
 
     // Publisher for the global cost map
-    global_map_pub_ = this->create_publisher<nav_msgs::msg::OccupancyGrid>("global_costmap/costmap", 10);
+    global_map_pub_ = this->create_publisher<nav_msgs::msg::OccupancyGrid>("/global_costmap/costmap", 10);
 
     // Publisher for the local cost map
-    local_map_pub_ = this->create_publisher<nav_msgs::msg::OccupancyGrid>("local_costmap/costmap", 10);
+    local_map_pub_ = this->create_publisher<nav_msgs::msg::OccupancyGrid>("/local_costmap/costmap", 10);
 
     RCLCPP_INFO(this->get_logger(), "ESDF cost map node initialized.");
   }
@@ -108,9 +110,28 @@ void esdf_callback(const sensor_msgs::msg::PointCloud2::SharedPtr esdf_msg)
         int grid_y = static_cast<int>((point.y - local_map.info.origin.position.y) / resolution_);
 
         if (grid_x >= 0 && grid_x < local_grid_size_ && grid_y >= 0 && grid_y < local_grid_size_) {
-            float distance = point.intensity;
-            int cost = static_cast<int>((distance / intensity_threshold_) * 100.0f);
-            cost = std::min(100, std::max(0, cost));
+            float distance = point.intensity; // Distance to nearest obstacle from ESDF
+            int cost;
+
+            if (distance < 0.0f) {
+                // Inside an obstacle or invalid value
+                cost = 100; // Maximum cost for obstacle
+            } else if (distance <= safety_distance_min_) {
+                // Within minimum safety distance
+                cost = 100; // Maximum cost (unsafe region)
+            } else if (distance <= safety_distance_max_) {
+                // Between minimum and maximum safety distance
+                // Linearly interpolate cost from 100 to 0
+                cost = static_cast<int>(100.0f * (1.0f - (distance - safety_distance_min_) /
+                                                         (safety_distance_max_ - safety_distance_min_)));
+            } else {
+                // Beyond maximum safety distance
+                cost = 0; // No cost (safe region)
+            }
+
+            // Ensure cost stays within the range [0, 100]
+            cost = std::clamp(cost, 0, 100);
+
             local_map.data[grid_y * local_grid_size_ + grid_x] = cost;
         }
     }
@@ -152,7 +173,8 @@ void esdf_callback(const sensor_msgs::msg::PointCloud2::SharedPtr esdf_msg)
   int global_grid_size_;
   double local_half_size_;
   double global_half_size_;
-  double intensity_threshold_;
+  double safety_distance_min_;
+  double safety_distance_max_;
   std::string frame_id_;
 
   // TF2 buffer and listener

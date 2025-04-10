@@ -13,7 +13,8 @@ def generate_launch_description():
                 {'local_map_size': 300.0},      # Local map size (300 m x 300 m)
                 {'global_map_size': 1500.0},    # Global map size (1500 m x 1500 m)
                 {'frame_id': 'base_link'},       # Map centered at base_link
-                {'intensinity_threshold': 20.0},  # Intensity of the cost map
+                {'safety_distance_min': 5.0},  # Minimum safety distance
+                {'safety_distance_max': 10.0}, # Maximum safety distance    
             ]
         )
     ])

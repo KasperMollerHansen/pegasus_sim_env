@@ -79,10 +79,9 @@ add_executable(a_star_node src/a_star_node.cpp)
 ament_target_dependencies(a_star_node
   rclcpp
   nav_msgs
+  px4_msgs
   geometry_msgs
 )
-
-
 
 install(TARGETS 
   setpoints_node

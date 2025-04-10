@@ -2,6 +2,7 @@
 #include <nav_msgs/msg/occupancy_grid.hpp>
 #include <nav_msgs/msg/path.hpp>
 #include <geometry_msgs/msg/pose_stamped.hpp>
+#include <px4_msgs/msg/trajectory_setpoint.hpp>
 #include <vector>
 #include <queue>
 #include <cmath>
@@ -27,24 +28,35 @@ public:
         obstacle_threshold_ = this->get_parameter("obstacle_threshold").as_int();
         frame_id_ = this->get_parameter("frame_id").as_string();
 
+        // QoS profile matching the TestFlight node
+        rclcpp::QoS qos_profile(rclcpp::KeepLast(1));
+        qos_profile.reliability(RMW_QOS_POLICY_RELIABILITY_BEST_EFFORT);
+        qos_profile.durability(RMW_QOS_POLICY_DURABILITY_TRANSIENT_LOCAL);
+
         // Subscribe to the local costmap
         costmap_sub_ = this->create_subscription<nav_msgs::msg::OccupancyGrid>(
             "local_costmap/costmap", 10,
             std::bind(&AStarPlanner::costmapCallback, this, std::placeholders::_1));
 
-        // Subscribe to goal setpoints
-        setpoints_sub_ = this->create_subscription<geometry_msgs::msg::PoseStamped>(
-            "goal_setpoints", 10,
+        // Subscribe to goal setpoints from TestFlight
+        setpoints_sub_ = this->create_subscription<px4_msgs::msg::TrajectorySetpoint>(
+            "in/target_setpoint", qos_profile,
             std::bind(&AStarPlanner::setpointCallback, this, std::placeholders::_1));
 
         // Publisher for the planned path
         path_pub_ = this->create_publisher<nav_msgs::msg::Path>("/planned_path", 10);
+
+        // Timer for debugging the cost of the current position
+        debug_timer_ = this->create_wall_timer(
+            std::chrono::seconds(5),
+            std::bind(&AStarPlanner::debugCurrentPositionCost, this));
     }
 
 private:
     rclcpp::Subscription<nav_msgs::msg::OccupancyGrid>::SharedPtr costmap_sub_;
-    rclcpp::Subscription<geometry_msgs::msg::PoseStamped>::SharedPtr setpoints_sub_;
+    rclcpp::Subscription<px4_msgs::msg::TrajectorySetpoint>::SharedPtr setpoints_sub_;
     rclcpp::Publisher<nav_msgs::msg::Path>::SharedPtr path_pub_;
+    rclcpp::TimerBase::SharedPtr debug_timer_;
 
     nav_msgs::msg::OccupancyGrid::SharedPtr costmap_;
     int obstacle_threshold_;
@@ -61,10 +73,51 @@ private:
         }
     }
 
-    void setpointCallback(const geometry_msgs::msg::PoseStamped::SharedPtr msg) {
+    void setpointCallback(const px4_msgs::msg::TrajectorySetpoint::SharedPtr msg) {
         RCLCPP_INFO(this->get_logger(), "Received new setpoint");
-        last_goal_ = msg;
-        planAndPublishPath(*msg);
+
+        // Convert TrajectorySetpoint to PoseStamped
+        geometry_msgs::msg::PoseStamped goal;
+        goal.header.stamp = this->now();
+        goal.header.frame_id = frame_id_;  // Ensure the frame matches the costmap
+        goal.pose.position.x = msg->position[0];
+        goal.pose.position.y = msg->position[1];
+        goal.pose.position.z = msg->position[2];
+        // Convert yaw to quaternion
+        float yaw = msg->yaw;
+        goal.pose.orientation.x = 0.0;
+        goal.pose.orientation.y = 0.0;
+        goal.pose.orientation.z = std::sin(yaw / 2.0);
+        goal.pose.orientation.w = std::cos(yaw / 2.0);
+
+        last_goal_ = std::make_shared<geometry_msgs::msg::PoseStamped>(goal);
+        planAndPublishPath(goal);
+    }
+
+    void debugCurrentPositionCost() {
+        if (!costmap_) {
+            RCLCPP_WARN(this->get_logger(), "Costmap not available for debugging");
+            return;
+        }
+
+        // Assume the robot's current position is at the origin of the costmap
+        int current_x = static_cast<int>((0.0 - costmap_->info.origin.position.x) / costmap_->info.resolution);
+        int current_y = static_cast<int>((0.0 - costmap_->info.origin.position.y) / costmap_->info.resolution);
+
+        if (current_x < 0 || current_x >= static_cast<int>(costmap_->info.width) ||
+            current_y < 0 || current_y >= static_cast<int>(costmap_->info.height)) {
+            RCLCPP_WARN(this->get_logger(), "Current position is outside the costmap bounds");
+            return;
+        }
+
+        int index = current_y * costmap_->info.width + current_x;
+        int cost = costmap_->data[index];
+
+        if (cost == -1) {
+            RCLCPP_INFO(this->get_logger(), "Current position cost: Unobserved (free space)");
+        } else {
+            RCLCPP_INFO(this->get_logger(), "Current position cost: %d", cost);
+        }
     }
 
     void planAndPublishPath(const geometry_msgs::msg::PoseStamped &goal) {
@@ -119,6 +172,18 @@ private:
         int start_y = static_cast<int>((start.pose.position.y - costmap_->info.origin.position.y) / resolution);
         int goal_x = static_cast<int>((goal.pose.position.x - costmap_->info.origin.position.x) / resolution);
         int goal_y = static_cast<int>((goal.pose.position.y - costmap_->info.origin.position.y) / resolution);
+
+        if (start_x < 0 || start_x >= width || start_y < 0 || start_y >= height ||
+            goal_x < 0 || goal_x >= width || goal_y < 0 || goal_y >= height) {
+            RCLCPP_ERROR(this->get_logger(), "Start or goal is outside the costmap bounds");
+            return {};
+        }
+
+        if (costmap_->data[toIndex(start_x, start_y)] > obstacle_threshold_ ||
+            costmap_->data[toIndex(goal_x, goal_y)] > obstacle_threshold_) {
+            RCLCPP_ERROR(this->get_logger(), "Start or goal is in an obstacle");
+            return {};
+        }
 
         std::priority_queue<AStarNode, std::vector<AStarNode>, std::greater<AStarNode>> open_list;
         std::unordered_map<int, int> came_from;
