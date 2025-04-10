@@ -53,10 +53,10 @@ public:
     );
 
     // Publisher for the global cost map
-    global_map_pub_ = this->create_publisher<nav_msgs::msg::OccupancyGrid>("out/global_costmap", 10);
+    global_map_pub_ = this->create_publisher<nav_msgs::msg::OccupancyGrid>("global_costmap/costmap", 10);
 
     // Publisher for the local cost map
-    local_map_pub_ = this->create_publisher<nav_msgs::msg::OccupancyGrid>("out/local_costmap", 10);
+    local_map_pub_ = this->create_publisher<nav_msgs::msg::OccupancyGrid>("local_costmap/costmap", 10);
 
     RCLCPP_INFO(this->get_logger(), "ESDF cost map node initialized.");
   }
