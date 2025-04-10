@@ -10,7 +10,7 @@ def generate_launch_description():
             output='screen',
             parameters=[
                 {'resolution': 1.0},            # Cell size in meters
-                {'local_map_size': 200.0},      # Local map size (200 m x 200 m)
+                {'local_map_size': 300.0},      # Local map size (300 m x 300 m)
                 {'global_map_size': 1500.0},    # Global map size (1500 m x 1500 m)
                 {'frame_id': 'base_link'},       # Map centered at base_link
                 {'intensinity_threshold': 20.0},  # Intensity of the cost map

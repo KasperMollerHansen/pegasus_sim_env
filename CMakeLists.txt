@@ -73,11 +73,22 @@ ament_target_dependencies(cost_map_node
   pcl_ros
 )
 
+add_executable(a_star_node src/a_star_node.cpp)
+
+# Add executable for src/a_star_node.cpp
+ament_target_dependencies(a_star_node
+  rclcpp
+  nav_msgs
+  geometry_msgs
+)
+
+
 
 install(TARGETS 
   setpoints_node
   nav2_navigation
   cost_map_node
+  a_star_node
   DESTINATION lib/${PROJECT_NAME}
 )
 
