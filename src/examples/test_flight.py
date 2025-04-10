@@ -19,17 +19,24 @@ class TestFlight(Node):
     def __init__(self) -> None:
         super().__init__("offboard_control_takeoff_and_land")
 
-        # Configure QoS profile for publishing and subscribing
+        # Configure QoS profile to match AStarPlanner
         qos_profile = QoSProfile(
-            reliability=ReliabilityPolicy.BEST_EFFORT,
-            durability=DurabilityPolicy.TRANSIENT_LOCAL,
-            history=HistoryPolicy.KEEP_LAST,
-            depth=1,
+            reliability=ReliabilityPolicy.RELIABLE,  # Matches AStarPlanner
+            durability=DurabilityPolicy.TRANSIENT_LOCAL,  # Matches AStarPlanner
+            history=HistoryPolicy.KEEP_LAST,  # Matches AStarPlanner
+            depth=1,  # Matches AStarPlanner
         )
 
         # Path publisher
         self.path_publisher = self.create_publisher(
             Path, "in/trajectory_path", qos_profile
+        )
+
+        odometry_qos_profile = QoSProfile(
+        reliability=ReliabilityPolicy.BEST_EFFORT,  # Match the publisher's QoS
+        durability=DurabilityPolicy.VOLATILE,      # No need to store messages
+        history=HistoryPolicy.KEEP_LAST,           # Keep only the last message
+        depth=1,                                   # Queue size of 1
         )
 
         # tf topic subscriber
@@ -40,7 +47,7 @@ class TestFlight(Node):
             VehicleOdometry,
             "/fmu/out/vehicle_odometry",
             self.vehicle_odometry_callback,
-            qos_profile,
+            odometry_qos_profile,
         )
 
         self.vehicle_odometry = VehicleOdometry()
@@ -65,14 +72,14 @@ class TestFlight(Node):
         """Publish the next three setpoints as a Path message."""
         path_msg = Path()
         path_msg.header.stamp = self.get_clock().now().to_msg()
-        path_msg.header.frame_id = "map"
+        path_msg.header.frame_id = "odom"
 
         for i in range(3):
             checkpoint_index = (self.current_checkpoint + i) % len(self.coordinates)
             position = self.coordinates[checkpoint_index]
             pose = PoseStamped()
             pose.header.stamp = self.get_clock().now().to_msg()
-            pose.header.frame_id = "map"
+            pose.header.frame_id = "odom"
             pose.pose.position.x = position[0]
             pose.pose.position.y = position[1]
             pose.pose.position.z = position[2]
