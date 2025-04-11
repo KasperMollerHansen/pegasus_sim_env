@@ -6,9 +6,12 @@
 #include <tf2_ros/buffer.h>
 #include <geometry_msgs/msg/transform_stamped.hpp>
 #include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
+#include <eigen3/Eigen/Dense>
+
 #include <vector>
 #include <queue>
 #include <cmath>
+#include <algorithm>
 #include <unordered_map>
 
 // Define a struct for A* nodes
@@ -132,6 +135,9 @@ private:
             // Update the start for the next segment
             start = goal;
         }
+
+        // Smooth the planned path
+        planned_path.poses = smoothPath(planned_path.poses, interpolation_distance_);
 
         // Publish the planned path
         path_pub_->publish(planned_path);
@@ -327,6 +333,155 @@ private:
         }
     
         return full_path;
+    }
+    std::vector<geometry_msgs::msg::PoseStamped> smoothPath(
+        const std::vector<geometry_msgs::msg::PoseStamped> &path, double interpolation_distance) {
+        if (path.size() < 2) {
+            // Not enough points to smooth
+            return path;
+        }
+    
+        // Simplify the path using the Ramer-Douglas-Peucker algorithm
+        auto simplifyPath = [](const std::vector<geometry_msgs::msg::PoseStamped> &path, double epsilon) {
+            if (path.size() < 3) {
+                return path; // No simplification needed
+            }
+    
+            std::vector<bool> keep(path.size(), false);
+            keep.front() = true;  // Always keep the first point
+            keep.back() = true;   // Always keep the last point
+    
+            std::function<void(size_t, size_t)> rdp = [&](size_t start, size_t end) {
+                if (start + 1 >= end) {
+                    return; // No points to simplify
+                }
+    
+                // Find the point farthest from the line segment [start, end]
+                double max_distance = 0.0;
+                size_t farthest_index = start;
+    
+                const auto &start_point = path[start].pose.position;
+                const auto &end_point = path[end].pose.position;
+    
+                for (size_t i = start + 1; i < end; ++i) {
+                    const auto &current_point = path[i].pose.position;
+    
+                    // Calculate perpendicular distance to the line
+                    double num = std::abs((end_point.y - start_point.y) * current_point.x -
+                                          (end_point.x - start_point.x) * current_point.y +
+                                          end_point.x * start_point.y - end_point.y * start_point.x);
+                    double den = std::sqrt(std::pow(end_point.y - start_point.y, 2) +
+                                           std::pow(end_point.x - start_point.x, 2));
+                    double distance = num / den;
+    
+                    if (distance > max_distance) {
+                        max_distance = distance;
+                        farthest_index = i;
+                    }
+                }
+    
+                // If the farthest point is farther than epsilon, keep it
+                if (max_distance > epsilon) {
+                    keep[farthest_index] = true;
+                    rdp(start, farthest_index);
+                    rdp(farthest_index, end);
+                }
+            };
+    
+            rdp(0, path.size() - 1);
+    
+            // Build the simplified path
+            std::vector<geometry_msgs::msg::PoseStamped> simplified_path;
+            for (size_t i = 0; i < path.size(); ++i) {
+                if (keep[i]) {
+                    simplified_path.push_back(path[i]);
+                }
+            }
+    
+            return simplified_path;
+        };
+    
+        // Simplify the path with a chosen epsilon value
+        double epsilon = interpolation_distance; // Adjust epsilon as needed
+        std::vector<geometry_msgs::msg::PoseStamped> simplified_path = simplifyPath(path, epsilon);
+    
+        // Smooth the simplified path using cubic spline interpolation
+        std::vector<double> x, y, z;
+        for (const auto &pose : simplified_path) {
+            x.push_back(pose.pose.position.x);
+            y.push_back(pose.pose.position.y);
+            z.push_back(pose.pose.position.z);
+        }
+    
+        // Generate a parameter t for interpolation (e.g., cumulative distance)
+        std::vector<double> t(x.size(), 0.0);
+        for (size_t i = 1; i < x.size(); ++i) {
+            t[i] = t[i - 1] + std::sqrt(
+                std::pow(x[i] - x[i - 1], 2) +
+                std::pow(y[i] - y[i - 1], 2) +
+                std::pow(z[i] - z[i - 1], 2));
+        }
+    
+        // Normalize t to [0, total_length]
+        double total_length = t.back();
+    
+        // Calculate the number of points based on the desired spacing
+        int num_points = static_cast<int>(std::ceil(total_length / interpolation_distance));
+    
+        // Generate new parameter values for the smoothed path
+        std::vector<double> t_new(num_points);
+        for (int i = 0; i < num_points; ++i) {
+            t_new[i] = i * interpolation_distance;
+        }
+    
+        // Perform cubic spline interpolation
+        auto cubicSpline = [](const std::vector<double> &t, const std::vector<double> &values, const std::vector<double> &t_new) {
+            std::vector<double> result(t_new.size());
+            for (size_t i = 0; i < t_new.size(); ++i) {
+                auto it = std::lower_bound(t.begin(), t.end(), t_new[i]);
+                size_t idx = std::distance(t.begin(), it);
+                if (idx == 0) {
+                    result[i] = values[0];
+                } else if (idx >= t.size()) {
+                    result[i] = values.back();
+                } else {
+                    double t1 = t[idx - 1], t2 = t[idx];
+                    double v1 = values[idx - 1], v2 = values[idx];
+                    result[i] = v1 + (v2 - v1) * (t_new[i] - t1) / (t2 - t1);
+                }
+            }
+            return result;
+        };
+    
+        std::vector<double> x_smooth = cubicSpline(t, x, t_new);
+        std::vector<double> y_smooth = cubicSpline(t, y, t_new);
+        std::vector<double> z_smooth = cubicSpline(t, z, t_new);
+    
+        // Reconstruct the smoothed path
+        std::vector<geometry_msgs::msg::PoseStamped> smoothed_path;
+        for (size_t i = 0; i < t_new.size(); ++i) {
+            geometry_msgs::msg::PoseStamped pose;
+            pose.header = simplified_path.front().header; // Use the same header
+            pose.pose.position.x = x_smooth[i];
+            pose.pose.position.y = y_smooth[i];
+            pose.pose.position.z = z_smooth[i];
+    
+            // Recalculate orientation
+            if (i > 0) {
+                double dx = x_smooth[i] - x_smooth[i - 1];
+                double dy = y_smooth[i] - y_smooth[i - 1];
+                double yaw = std::atan2(dy, dx);
+                tf2::Quaternion quaternion;
+                quaternion.setRPY(0, 0, yaw);
+                pose.pose.orientation = tf2::toMsg(quaternion);
+            } else {
+                pose.pose.orientation = simplified_path.front().pose.orientation; // Use the first pose's orientation
+            }
+    
+            smoothed_path.push_back(pose);
+        }
+    
+        return smoothed_path;
     }
 };
 
