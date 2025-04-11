@@ -27,7 +27,7 @@ public:
         // Declare and retrieve parameters
         this->declare_parameter<int>("obstacle_threshold", 50);
         this->declare_parameter<std::string>("frame_id", "base_link");
-        this->declare_parameter<double>("interpolation_distance", 5.0);
+        this->declare_parameter<double>("interpolation_distance", 2.0);
 
         obstacle_threshold_ = this->get_parameter("obstacle_threshold").as_int();
         frame_id_ = this->get_parameter("frame_id").as_string();
@@ -190,21 +190,26 @@ private:
             int goal_x = static_cast<int>((current_goal.pose.position.x - costmap_->info.origin.position.x) / resolution);
             int goal_y = static_cast<int>((current_goal.pose.position.y - costmap_->info.origin.position.y) / resolution);
 
-            // Check if the start or goal is in an obstacle
-            if (costmap_->data[toIndex(start_x, start_y)] > obstacle_threshold_) {
-                RCLCPP_WARN(this->get_logger(), "Start position is in an obstacle. Assuming free space.");
-            }
-            if (costmap_->data[toIndex(goal_x, goal_y)] > obstacle_threshold_) {
-                RCLCPP_WARN(this->get_logger(), "Goal position is in an obstacle. Assuming free space.");
-            }
+            // Check if start or goal is out of bounds
+            bool start_out_of_bounds = (start_x < 0 || start_x >= width || start_y < 0 || start_y >= height);
+            bool goal_out_of_bounds = (goal_x < 0 || goal_x >= width || goal_y < 0 || goal_y >= height);
+
+            // if (start_out_of_bounds) {
+            //     RCLCPP_WARN(this->get_logger(), "Start position is out of bounds. Assuming free space.");
+            // }
+            // if (goal_out_of_bounds) {
+            //     RCLCPP_WARN(this->get_logger(), "Goal position is out of bounds. Assuming free space.");
+            // }
 
             // A* algorithm
             std::priority_queue<AStarNode, std::vector<AStarNode>, std::greater<AStarNode>> open_list;
             std::unordered_map<int, int> came_from;
             std::unordered_map<int, float> cost_so_far;
 
-            open_list.push({start_x, start_y, 0});
-            cost_so_far[toIndex(start_x, start_y)] = 0;
+            if (!start_out_of_bounds) {
+                open_list.push({start_x, start_y, 0});
+                cost_so_far[toIndex(start_x, start_y)] = 0;
+            }
 
             std::vector<int> dx = {1, -1, 0, 0};
             std::vector<int> dy = {0, 0, 1, -1};
@@ -213,7 +218,7 @@ private:
                 AStarNode current = open_list.top();
                 open_list.pop();
 
-                if (current.x == goal_x && current.y == goal_y) {
+                if (!goal_out_of_bounds && current.x == goal_x && current.y == goal_y) {
                     break;
                 }
 
@@ -221,6 +226,7 @@ private:
                     int next_x = current.x + dx[i];
                     int next_y = current.y + dy[i];
 
+                    // Skip neighbors that are out of bounds
                     if (next_x < 0 || next_y < 0 || next_x >= width || next_y >= height) {
                         continue;
                     }
@@ -242,18 +248,20 @@ private:
 
             // Reconstruct the path
             std::vector<geometry_msgs::msg::PoseStamped> segment_path;
-            int current_index = toIndex(goal_x, goal_y);
+            if (!goal_out_of_bounds) {
+                int current_index = toIndex(goal_x, goal_y);
 
-            while (came_from.count(current_index)) {
-                int x = current_index % width;
-                int y = current_index / width;
-                geometry_msgs::msg::PoseStamped pose;
-                pose.header.frame_id = costmap_->header.frame_id;
-                pose.pose.position.x = x * resolution + costmap_->info.origin.position.x;
-                pose.pose.position.y = y * resolution + costmap_->info.origin.position.y;
-                pose.pose.position.z = current_start.pose.position.z; // Keep z constant
-                segment_path.push_back(pose);
-                current_index = came_from[current_index];
+                while (came_from.count(current_index)) {
+                    int x = current_index % width;
+                    int y = current_index / width;
+                    geometry_msgs::msg::PoseStamped pose;
+                    pose.header.frame_id = costmap_->header.frame_id;
+                    pose.pose.position.x = x * resolution + costmap_->info.origin.position.x;
+                    pose.pose.position.y = y * resolution + costmap_->info.origin.position.y;
+                    pose.pose.position.z = current_start.pose.position.z; // Keep z constant
+                    segment_path.push_back(pose);
+                    current_index = came_from[current_index];
+                }
             }
 
             // Add the start position to the segment path
