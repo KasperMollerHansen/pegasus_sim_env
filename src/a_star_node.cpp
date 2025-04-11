@@ -297,22 +297,25 @@ private:
                 pose.pose.position.x = x * resolution + costmap_->info.origin.position.x;
                 pose.pose.position.y = y * resolution + costmap_->info.origin.position.y;
             
-                // Interpolate the z position based on the relative distance between the start and goal
+                // Calculate the interpolation factor (t) based on the 2D distance
                 float dx = goal.pose.position.x - start.pose.position.x;
                 float dy = goal.pose.position.y - start.pose.position.y;
                 float dz = goal.pose.position.z - start.pose.position.z;
             
-                float distance_to_start = std::sqrt(
+                float distance_to_start_2d = std::sqrt(
                     std::pow(pose.pose.position.x - start.pose.position.x, 2) +
                     std::pow(pose.pose.position.y - start.pose.position.y, 2));
-                float total_distance = std::sqrt(dx * dx + dy * dy);
-            
-                if (total_distance > 0.0 && distance_to_start <= total_distance) {
-                    pose.pose.position.z = start.pose.position.z + (distance_to_start / total_distance) * dz;
+                float total_distance_2d = std::sqrt(dx * dx + dy * dy);
+
+
+                // Ensure valid interpolation
+                if (total_distance_2d > 0.0) {
+                    float t = std::clamp(distance_to_start / total_distance, 0.0f, 1.0f); // Clamp t to [0, 1]
+                    pose.pose.position.z = start.pose.position.z + t * dz;
                 } else {
-                    pose.pose.position.z = start.pose.position.z; // Fallback if total_distance is zero
+                    pose.pose.position.z = start.pose.position.z; // Fallback if total_distance_2d is zero
                 }
-            
+
                 segment_path.push_back(pose);
                 current_index = came_from[current_index];
             }
