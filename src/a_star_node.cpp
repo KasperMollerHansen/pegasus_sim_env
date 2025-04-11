@@ -156,10 +156,11 @@ private:
             return std::sqrt(std::pow(x1 - x2, 2) + std::pow(y1 - y2, 2));
         };
 
-        // Calculate the Euclidean distance between start and goal
+        // Calculate the Euclidean distance between start and goal, including the z-axis
         float distance = std::sqrt(
             std::pow(goal.pose.position.x - start.pose.position.x, 2) +
-            std::pow(goal.pose.position.y - start.pose.position.y, 2));
+            std::pow(goal.pose.position.y - start.pose.position.y, 2) +
+            std::pow(goal.pose.position.z - start.pose.position.z, 2));
 
         // If the distance exceeds the interpolation_distance, interpolate intermediate points
         std::vector<geometry_msgs::msg::PoseStamped> waypoints;
@@ -171,11 +172,10 @@ private:
                 intermediate.header.frame_id = costmap_->header.frame_id;
                 intermediate.pose.position.x = start.pose.position.x + t * (goal.pose.position.x - start.pose.position.x);
                 intermediate.pose.position.y = start.pose.position.y + t * (goal.pose.position.y - start.pose.position.y);
-                intermediate.pose.position.z = start.pose.position.z; // Keep z constant
+                intermediate.pose.position.z = start.pose.position.z + t * (goal.pose.position.z - start.pose.position.z); // Interpolate z
                 waypoints.push_back(intermediate);
             }
         }
-
         // Add the goal as the final waypoint
         waypoints.push_back(goal);
 
