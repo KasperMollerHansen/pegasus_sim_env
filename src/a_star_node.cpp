@@ -307,7 +307,7 @@ private:
                     std::pow(pose.pose.position.y - start.pose.position.y, 2));
                 float total_distance = std::sqrt(dx * dx + dy * dy);
             
-                if (total_distance > 0.0) {
+                if (total_distance > 0.0 && distance_to_start <= total_distance) {
                     pose.pose.position.z = start.pose.position.z + (distance_to_start / total_distance) * dz;
                 } else {
                     pose.pose.position.z = start.pose.position.z; // Fallback if total_distance is zero
