@@ -307,13 +307,13 @@ private:
                     std::pow(pose.pose.position.y - start.pose.position.y, 2));
                 float total_distance_2d = std::sqrt(dx * dx + dy * dy);
 
-
                 // Ensure valid interpolation
                 if (total_distance_2d > 0.0) {
-                    float t = std::clamp(distance_to_start / total_distance, 0.0f, 1.0f); // Clamp t to [0, 1]
+                    float t = std::clamp(distance_to_start_2d / total_distance_2d, 0.0f, 1.0f); // Clamp t to [0, 1]
                     pose.pose.position.z = start.pose.position.z + t * dz;
                 } else {
-                    pose.pose.position.z = start.pose.position.z; // Fallback if total_distance_2d is zero
+                    // If no horizontal movement, directly interpolate based on vertical distance
+                    pose.pose.position.z = start.pose.position.z + dz;
                 }
 
                 segment_path.push_back(pose);
