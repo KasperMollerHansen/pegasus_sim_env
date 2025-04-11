@@ -173,11 +173,30 @@ private:
                 intermediate.pose.position.x = start.pose.position.x + t * (goal.pose.position.x - start.pose.position.x);
                 intermediate.pose.position.y = start.pose.position.y + t * (goal.pose.position.y - start.pose.position.y);
                 intermediate.pose.position.z = start.pose.position.z + t * (goal.pose.position.z - start.pose.position.z); // Interpolate z
+                
+                // Calculate yaw and convert to quaternion
+                float yaw = std::atan2(
+                    goal.pose.position.y - start.pose.position.y,
+                    goal.pose.position.x - start.pose.position.x);
+                tf2::Quaternion quaternion;
+                quaternion.setRPY(0, 0, yaw); // Roll and pitch are 0, only yaw is relevant
+                intermediate.pose.orientation = tf2::toMsg(quaternion);
+
                 waypoints.push_back(intermediate);
             }
         }
         // Add the goal as the final waypoint
-        waypoints.push_back(goal);
+        geometry_msgs::msg::PoseStamped final_waypoint = goal;
+
+        // Calculate yaw for the final waypoint
+        float final_yaw = std::atan2(
+            goal.pose.position.y - start.pose.position.y,
+            goal.pose.position.x - start.pose.position.x);
+        tf2::Quaternion final_quaternion;
+        final_quaternion.setRPY(0, 0, final_yaw);
+        final_waypoint.pose.orientation = tf2::toMsg(final_quaternion);
+
+        waypoints.push_back(final_waypoint);
 
         // Initialize the full path
         std::vector<geometry_msgs::msg::PoseStamped> full_path;
