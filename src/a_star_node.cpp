@@ -289,11 +289,30 @@ private:
             while (came_from.count(current_index)) {
                 int x = current_index % width;
                 int y = current_index / width;
+            
                 geometry_msgs::msg::PoseStamped pose;
                 pose.header.frame_id = costmap_->header.frame_id;
+            
+                // Calculate the x and y positions
                 pose.pose.position.x = x * resolution + costmap_->info.origin.position.x;
                 pose.pose.position.y = y * resolution + costmap_->info.origin.position.y;
-                pose.pose.position.z = current_start.pose.position.z;
+            
+                // Interpolate the z position based on the relative distance between the start and goal
+                float dx = goal.pose.position.x - start.pose.position.x;
+                float dy = goal.pose.position.y - start.pose.position.y;
+                float dz = goal.pose.position.z - start.pose.position.z;
+            
+                float distance_to_start = std::sqrt(
+                    std::pow(pose.pose.position.x - start.pose.position.x, 2) +
+                    std::pow(pose.pose.position.y - start.pose.position.y, 2));
+                float total_distance = std::sqrt(dx * dx + dy * dy);
+            
+                if (total_distance > 0.0) {
+                    pose.pose.position.z = start.pose.position.z + (distance_to_start / total_distance) * dz;
+                } else {
+                    pose.pose.position.z = start.pose.position.z; // Fallback if total_distance is zero
+                }
+            
                 segment_path.push_back(pose);
                 current_index = came_from[current_index];
             }
