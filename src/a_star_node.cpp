@@ -138,6 +138,36 @@ private:
         RCLCPP_INFO(this->get_logger(), "Published planned path with %zu poses", planned_path.poses.size());
     }
 
+    // Function to check and adjust waypoints for collision-free zones
+    geometry_msgs::msg::PoseStamped adjustWaypointForCollision(
+        const geometry_msgs::msg::PoseStamped &waypoint, float yaw, float resolution, int max_attempts) {
+        geometry_msgs::msg::PoseStamped adjusted_waypoint = waypoint;
+
+        for (int attempt = 0; attempt < max_attempts; ++attempt) {
+            // Convert waypoint position to costmap indices
+            int x_index = static_cast<int>((adjusted_waypoint.pose.position.x - costmap_->info.origin.position.x) / resolution);
+            int y_index = static_cast<int>((adjusted_waypoint.pose.position.y - costmap_->info.origin.position.y) / resolution);
+
+            // Check if the waypoint is within bounds
+            if (x_index >= 0 && x_index < costmap_->info.width && y_index >= 0 && y_index < costmap_->info.height) {
+                int index = y_index * costmap_->info.width + x_index;
+
+                // Check if the waypoint is in a collision-free zone
+                if (costmap_->data[index] <= obstacle_threshold_) {
+                    return adjusted_waypoint; // Collision-free waypoint found
+                }
+            }
+
+            // Move the waypoint in the negative yaw direction by 0.5 meters
+            adjusted_waypoint.pose.position.x -= 0.5 * std::cos(yaw);
+            adjusted_waypoint.pose.position.y -= 0.5 * std::sin(yaw);
+        }
+
+        // If no collision-free zone is found, return an invalid waypoint
+        adjusted_waypoint.header.frame_id = ""; // Mark as invalid
+        return adjusted_waypoint;
+    }
+
     std::vector<geometry_msgs::msg::PoseStamped> planPath(
         const geometry_msgs::msg::PoseStamped &start,
         const geometry_msgs::msg::PoseStamped &goal) {
@@ -173,7 +203,7 @@ private:
                 intermediate.pose.position.x = start.pose.position.x + t * (goal.pose.position.x - start.pose.position.x);
                 intermediate.pose.position.y = start.pose.position.y + t * (goal.pose.position.y - start.pose.position.y);
                 intermediate.pose.position.z = start.pose.position.z + t * (goal.pose.position.z - start.pose.position.z); // Interpolate z
-                
+    
                 // Calculate yaw and convert to quaternion
                 float yaw = std::atan2(
                     goal.pose.position.y - start.pose.position.y,
@@ -181,8 +211,12 @@ private:
                 tf2::Quaternion quaternion;
                 quaternion.setRPY(0, 0, yaw); // Roll and pitch are 0, only yaw is relevant
                 intermediate.pose.orientation = tf2::toMsg(quaternion);
-
-                waypoints.push_back(intermediate);
+    
+                // Adjust the waypoint for collision-free zones
+                geometry_msgs::msg::PoseStamped adjusted_intermediate = adjustWaypointForCollision(intermediate, yaw, resolution, 20);
+                if (!adjusted_intermediate.header.frame_id.empty()) { // Valid waypoint
+                    waypoints.push_back(adjusted_intermediate);
+                }
             }
         }
         // Add the goal as the final waypoint
