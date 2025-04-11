@@ -62,6 +62,7 @@ private:
     std::shared_ptr<tf2_ros::Buffer> tf_buffer_;
     std::shared_ptr<tf2_ros::TransformListener> tf_listener_;
     nav_msgs::msg::OccupancyGrid::SharedPtr costmap_;
+    nav_msgs::msg::Path::SharedPtr last_trajectory_path_; // Store the last received trajectory path
     int obstacle_threshold_;
     std::string frame_id_;
     double interpolation_distance_;
@@ -69,20 +70,28 @@ private:
     void costmapCallback(const nav_msgs::msg::OccupancyGrid::SharedPtr msg) {
         costmap_ = msg;
         RCLCPP_INFO(this->get_logger(), "Received costmap");
+
+        // Re-plan and publish the path only when the costmap is updated
+        if (last_trajectory_path_) {
+            planAndPublishPath();
+        }
     }
 
     void pathCallback(const nav_msgs::msg::Path::SharedPtr msg) {
-        if (!costmap_) {
-            RCLCPP_ERROR(this->get_logger(), "Costmap not available for path planning");
-            return;
-        }
-
         if (msg->poses.empty()) {
             RCLCPP_WARN(this->get_logger(), "Received empty Path message");
             return;
         }
 
-        RCLCPP_INFO(this->get_logger(), "Received Path with %zu poses", msg->poses.size());
+        //RCLCPP_INFO(this->get_logger(), "Received Path with %zu poses", msg->poses.size());
+        last_trajectory_path_ = msg; // Store the received trajectory path
+    }
+
+    void planAndPublishPath() {
+        if (!costmap_ || !last_trajectory_path_) {
+            RCLCPP_ERROR(this->get_logger(), "Cannot plan path: costmap or trajectory path is missing");
+            return;
+        }
 
         // Get the robot's current position in the costmap frame
         geometry_msgs::msg::PoseStamped current_position;
@@ -106,8 +115,8 @@ private:
 
         // Plan paths sequentially between points
         geometry_msgs::msg::PoseStamped start = current_position;
-        for (size_t i = 0; i < msg->poses.size(); ++i) {
-            const auto &goal = msg->poses[i];
+        for (size_t i = 0; i < last_trajectory_path_->poses.size(); ++i) {
+            const auto &goal = last_trajectory_path_->poses[i];
 
             // Plan the path from the current start to the goal
             auto segment_path = planPath(start, goal);
@@ -124,7 +133,7 @@ private:
             start = goal;
         }
 
-        // Publish the planned path, including the last pose
+        // Publish the planned path
         path_pub_->publish(planned_path);
         RCLCPP_INFO(this->get_logger(), "Published planned path with %zu poses", planned_path.poses.size());
     }
@@ -136,22 +145,22 @@ private:
             RCLCPP_ERROR(this->get_logger(), "No costmap available");
             return {};
         }
-    
+
         int width = costmap_->info.width;
         int height = costmap_->info.height;
         float resolution = costmap_->info.resolution;
-    
+
         auto toIndex = [&](int x, int y) { return y * width + x; };
-    
+
         auto heuristic = [&](int x1, int y1, int x2, int y2) {
             return std::sqrt(std::pow(x1 - x2, 2) + std::pow(y1 - y2, 2));
         };
-    
+
         // Calculate the Euclidean distance between start and goal
         float distance = std::sqrt(
             std::pow(goal.pose.position.x - start.pose.position.x, 2) +
             std::pow(goal.pose.position.y - start.pose.position.y, 2));
-    
+
         // If the distance exceeds the interpolation_distance, interpolate intermediate points
         std::vector<geometry_msgs::msg::PoseStamped> waypoints;
         if (distance > interpolation_distance_) {
@@ -166,13 +175,13 @@ private:
                 waypoints.push_back(intermediate);
             }
         }
-    
+
         // Add the goal as the final waypoint
         waypoints.push_back(goal);
-    
+
         // Initialize the full path
         std::vector<geometry_msgs::msg::PoseStamped> full_path;
-    
+
         // Plan path between consecutive waypoints
         geometry_msgs::msg::PoseStamped current_start = start;
         for (const auto &current_goal : waypoints) {
@@ -180,7 +189,7 @@ private:
             int start_y = static_cast<int>((current_start.pose.position.y - costmap_->info.origin.position.y) / resolution);
             int goal_x = static_cast<int>((current_goal.pose.position.x - costmap_->info.origin.position.x) / resolution);
             int goal_y = static_cast<int>((current_goal.pose.position.y - costmap_->info.origin.position.y) / resolution);
-    
+
             // Check if the start or goal is in an obstacle
             if (costmap_->data[toIndex(start_x, start_y)] > obstacle_threshold_) {
                 RCLCPP_WARN(this->get_logger(), "Start position is in an obstacle. Assuming free space.");
@@ -188,39 +197,39 @@ private:
             if (costmap_->data[toIndex(goal_x, goal_y)] > obstacle_threshold_) {
                 RCLCPP_WARN(this->get_logger(), "Goal position is in an obstacle. Assuming free space.");
             }
-    
+
             // A* algorithm
             std::priority_queue<AStarNode, std::vector<AStarNode>, std::greater<AStarNode>> open_list;
             std::unordered_map<int, int> came_from;
             std::unordered_map<int, float> cost_so_far;
-    
+
             open_list.push({start_x, start_y, 0});
             cost_so_far[toIndex(start_x, start_y)] = 0;
-    
+
             std::vector<int> dx = {1, -1, 0, 0};
             std::vector<int> dy = {0, 0, 1, -1};
-    
+
             while (!open_list.empty()) {
                 AStarNode current = open_list.top();
                 open_list.pop();
-    
+
                 if (current.x == goal_x && current.y == goal_y) {
                     break;
                 }
-    
+
                 for (size_t i = 0; i < dx.size(); ++i) {
                     int next_x = current.x + dx[i];
                     int next_y = current.y + dy[i];
-    
+
                     if (next_x < 0 || next_y < 0 || next_x >= width || next_y >= height) {
                         continue;
                     }
-    
+
                     int index = toIndex(next_x, next_y);
                     if (costmap_->data[index] > obstacle_threshold_) { // Obstacle threshold
                         continue;
                     }
-    
+
                     float new_cost = cost_so_far[toIndex(current.x, current.y)] + 1;
                     if (!cost_so_far.count(index) || new_cost < cost_so_far[index]) {
                         cost_so_far[index] = new_cost;
@@ -230,11 +239,11 @@ private:
                     }
                 }
             }
-    
+
             // Reconstruct the path
             std::vector<geometry_msgs::msg::PoseStamped> segment_path;
             int current_index = toIndex(goal_x, goal_y);
-    
+
             while (came_from.count(current_index)) {
                 int x = current_index % width;
                 int y = current_index / width;
@@ -246,20 +255,20 @@ private:
                 segment_path.push_back(pose);
                 current_index = came_from[current_index];
             }
-    
+
             // Add the start position to the segment path
             segment_path.push_back(current_start);
-    
+
             // Reverse the segment path to get it in the correct order
             std::reverse(segment_path.begin(), segment_path.end());
-    
+
             // Append the segment path to the full path
             full_path.insert(full_path.end(), segment_path.begin(), segment_path.end());
-    
+
             // Update the current start for the next segment
             current_start = current_goal;
         }
-    
+
         return full_path;
     }
 };
