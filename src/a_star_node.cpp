@@ -259,8 +259,7 @@ private:
             }
         }
         waypoints.push_back(adjusted_goal);
-        return waypoints; // test
-    
+
         // Plan path between consecutive waypoints using A*
         std::vector<geometry_msgs::msg::PoseStamped> full_path;
         geometry_msgs::msg::PoseStamped current_start = waypoints.front();
