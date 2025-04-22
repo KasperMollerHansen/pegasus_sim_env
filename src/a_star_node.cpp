@@ -148,6 +148,30 @@ private:
         }
     }
 
+    tf2::Quaternion interpolateYaw(
+        const geometry_msgs::msg::Pose &start_pose,
+        const geometry_msgs::msg::Pose &goal_pose,
+        float t) {
+        tf2::Quaternion start_quat, goal_quat;
+        tf2::fromMsg(start_pose.orientation, start_quat);
+        tf2::fromMsg(goal_pose.orientation, goal_quat);
+    
+        double start_yaw = tf2::getYaw(start_quat);
+        double goal_yaw = tf2::getYaw(goal_quat);
+    
+        double delta_yaw = goal_yaw - start_yaw;
+        if (delta_yaw > M_PI) {
+            delta_yaw -= 2 * M_PI; // Wrap around
+        } else if (delta_yaw < -M_PI) {
+            delta_yaw += 2 * M_PI; // Wrap around
+        }
+        double interpolated_yaw = start_yaw + t * delta_yaw;
+    
+        tf2::Quaternion interpolated_quat;
+        interpolated_quat.setRPY(0, 0, interpolated_yaw);
+        return interpolated_quat;
+    }
+
     // Function to check and adjust waypoints for collision-free zones
     geometry_msgs::msg::PoseStamped adjustWaypointForCollision(
         const geometry_msgs::msg::PoseStamped &waypoint, float resolution, int max_attempts) {
@@ -164,7 +188,8 @@ private:
             int y_index = static_cast<int>((adjusted_waypoint.pose.position.y - costmap_->info.origin.position.y) / resolution);
 
             // Check if the waypoint is within bounds
-            if (x_index >= 0 && x_index < costmap_->info.width && y_index >= 0 && y_index < costmap_->info.height) {
+            if (x_index >= 0 && x_index < static_cast<int>(costmap_->info.width) &&
+                y_index >= 0 && y_index < static_cast<int>(costmap_->info.height)) {
                 int index = y_index * costmap_->info.width + x_index;
 
                 // Check if the waypoint is in a collision-free zone
@@ -220,14 +245,6 @@ private:
         if (distance > interpolation_distance_) {
             int num_intermediate_points = static_cast<int>(std::ceil(distance / interpolation_distance_));
 
-            // Extract start and goal yaw
-            tf2::Quaternion start_quat, goal_quat;
-            tf2::fromMsg(start.pose.orientation, start_quat);
-            tf2::fromMsg(goal.pose.orientation, goal_quat);
-            double start_yaw = tf2::getYaw(start_quat);
-            double goal_yaw = tf2::getYaw(goal_quat);
-
-
             for (int i = 1; i <= num_intermediate_points; ++i) {
                 float t = static_cast<float>(i) / (num_intermediate_points + 1);
                 geometry_msgs::msg::PoseStamped intermediate;
@@ -236,19 +253,7 @@ private:
                 intermediate.pose.position.y = start.pose.position.y + t * (goal.pose.position.y - start.pose.position.y);
                 intermediate.pose.position.z = start.pose.position.z + t * (goal.pose.position.z - start.pose.position.z);
                 
-
-                // Interpolate yaw
-                double delta_yaw = goal_yaw - start_yaw;
-                if (delta_yaw > M_PI) {
-                    delta_yaw -= 2 * M_PI; // Wrap around
-                } else if (delta_yaw < -M_PI) {
-                    delta_yaw += 2 * M_PI; // Wrap around
-                }
-                double interpolated_yaw = start_yaw + t * delta_yaw;
-
-                 // Convert interpolated yaw to quaternion
-                tf2::Quaternion quaternion;
-                quaternion.setRPY(0, 0, interpolated_yaw);
+                tf2::Quaternion quaternion = interpolateYaw(start.pose, goal.pose, t);
                 intermediate.pose.orientation = tf2::toMsg(quaternion);
     
                 // Adjust the waypoint for collision-free zones
@@ -332,6 +337,7 @@ private:
                 float dx = goal.pose.position.x - start.pose.position.x;
                 float dy = goal.pose.position.y - start.pose.position.y;
                 float dz = goal.pose.position.z - start.pose.position.z;
+                
             
                 float distance_to_start_2d = std::sqrt(
                     std::pow(pose.pose.position.x - start.pose.position.x, 2) +
@@ -342,9 +348,13 @@ private:
                 if (total_distance_2d > 0.0) {
                     float t = std::clamp(distance_to_start_2d / total_distance_2d, 0.0f, 1.0f); // Clamp t to [0, 1]
                     pose.pose.position.z = start.pose.position.z + t * dz;
+                    
+                    tf2::Quaternion quaternion = interpolateYaw(start.pose, goal.pose, t);
+                    pose.pose.orientation = tf2::toMsg(quaternion);
                 } else {
                     // If no horizontal movement, directly interpolate based on vertical distance
                     pose.pose.position.z = start.pose.position.z + dz;
+                    pose.pose.orientation = goal.pose.orientation; 
                 }
 
                 segment_path.push_back(pose);
