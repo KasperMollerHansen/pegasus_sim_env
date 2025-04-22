@@ -127,8 +127,14 @@ private:
             auto segment_path = planPath(start, goal);
 
             if (segment_path.empty()) {
-                RCLCPP_ERROR(this->get_logger(), "Failed to plan a path for segment %zu", i);
-                break; // Stop planning further segments
+                if (i < 2) {
+                    // Try to replan the path to the next goal
+                    RCLCPP_WARN(this->get_logger(), "No valid path found for segment %zu, trying next goal", i);
+                    continue; // Skip to the next goal
+                }else{
+                    RCLCPP_ERROR(this->get_logger(), "Failed to plan a path for segment %zu", i);
+                    break; // Stop planning further segments
+                }
             }
 
             // Concatenate the segment to the planned path

@@ -11,8 +11,8 @@ def generate_launch_description():
             parameters=[
                 {'resolution': 1.0},            # Cell size in meters
                 {'free_center_radius': 5.0},   # Free space radius
-                {'local_map_size': 300.0},      # Local map size (300 m x 300 m)
-                {'global_map_size': 1500.0},    # Global map size (1500 m x 1500 m)
+                {'local_map_size': 400.0},      # Local map size (400 m x 400 m)
+                {'global_map_size': 1600.0},    # Global map size (1600 m x 1600 m)
                 {'frame_id': 'base_link'},      # Map centered at base_link
                 {'safety_distance_min': 5.0},   # Minimum safety distance
                 {'safety_distance_max': 10.0},  # Maximum safety distance    
