@@ -125,8 +125,8 @@ private:
             auto segment_path = planPath(start, goal);
 
             if (segment_path.empty()) {
-                RCLCPP_ERROR(this->get_logger(), "Failed to plan a path between points");
-                return;
+                RCLCPP_ERROR(this->get_logger(), "Failed to plan a path for segment %zu", i);
+                break; // Stop planning further segments
             }
 
             // Concatenate the segment to the planned path
@@ -136,12 +136,14 @@ private:
             start = goal;
         }
 
-        // Smooth the planned path
-        planned_path.poses = smoothPath(planned_path.poses, interpolation_distance_);
-
-        // Publish the planned path
-        path_pub_->publish(planned_path);
-        RCLCPP_INFO(this->get_logger(), "Published planned path with %zu poses", planned_path.poses.size());
+        // Publish the planned path up to the last successful segment
+        if (!planned_path.poses.empty()) {
+            planned_path.poses = smoothPath(planned_path.poses, interpolation_distance_);
+            path_pub_->publish(planned_path);
+            RCLCPP_INFO(this->get_logger(), "Published planned path with %zu poses", planned_path.poses.size());
+        } else {
+            RCLCPP_WARN(this->get_logger(), "No valid path segments to publish");
+        }
     }
 
     // Function to check and adjust waypoints for collision-free zones
