@@ -444,11 +444,16 @@ private:
         std::vector<geometry_msgs::msg::PoseStamped> simplified_path = simplifyPath(path, epsilon);
     
         // Smooth the simplified path using cubic spline interpolation
-        std::vector<double> x, y, z;
+        std::vector<double> x, y, z, yaw;
         for (const auto &pose : simplified_path) {
             x.push_back(pose.pose.position.x);
             y.push_back(pose.pose.position.y);
             z.push_back(pose.pose.position.z);
+    
+            // Extract yaw from the orientation
+            tf2::Quaternion quat;
+            tf2::fromMsg(pose.pose.orientation, quat);
+            yaw.push_back(tf2::getYaw(quat));
         }
     
         // Generate a parameter t for interpolation (e.g., cumulative distance)
@@ -494,6 +499,7 @@ private:
         std::vector<double> x_smooth = cubicSpline(t, x, t_new);
         std::vector<double> y_smooth = cubicSpline(t, y, t_new);
         std::vector<double> z_smooth = cubicSpline(t, z, t_new);
+        std::vector<double> yaw_smooth = cubicSpline(t, yaw, t_new);
     
         // Reconstruct the smoothed path
         std::vector<geometry_msgs::msg::PoseStamped> smoothed_path;
@@ -504,17 +510,10 @@ private:
             pose.pose.position.y = y_smooth[i];
             pose.pose.position.z = z_smooth[i];
     
-            // Recalculate orientation
-            if (i > 0) {
-                double dx = x_smooth[i] - x_smooth[i - 1];
-                double dy = y_smooth[i] - y_smooth[i - 1];
-                double yaw = std::atan2(dy, dx);
-                tf2::Quaternion quaternion;
-                quaternion.setRPY(0, 0, yaw);
-                pose.pose.orientation = tf2::toMsg(quaternion);
-            } else {
-                pose.pose.orientation = simplified_path.front().pose.orientation; // Use the first pose's orientation
-            }
+            // Use the interpolated yaw
+            tf2::Quaternion quaternion;
+            quaternion.setRPY(0, 0, yaw_smooth[i]);
+            pose.pose.orientation = tf2::toMsg(quaternion);
     
             smoothed_path.push_back(pose);
         }
