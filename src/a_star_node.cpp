@@ -8,6 +8,7 @@
 #include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
 #include <eigen3/Eigen/Dense>
 
+#include <tf2/utils.h>
 #include <vector>
 #include <queue>
 #include <cmath>
@@ -105,6 +106,7 @@ private:
             current_position.pose.position.x = transform.transform.translation.x;
             current_position.pose.position.y = transform.transform.translation.y;
             current_position.pose.position.z = transform.transform.translation.z;
+            current_position.pose.orientation = transform.transform.rotation;
             current_position.header.frame_id = costmap_->header.frame_id;
         } catch (const tf2::TransformException &ex) {
             RCLCPP_ERROR(this->get_logger(), "Failed to get transform: %s", ex.what());
@@ -138,7 +140,7 @@ private:
 
         // Publish the planned path up to the last successful segment
         if (!planned_path.poses.empty()) {
-            planned_path.poses = smoothPath(planned_path.poses, interpolation_distance_);
+            // planned_path.poses = smoothPath(planned_path.poses, interpolation_distance_);
             path_pub_->publish(planned_path);
             RCLCPP_INFO(this->get_logger(), "Published planned path with %zu poses", planned_path.poses.size());
         } else {
@@ -165,7 +167,7 @@ private:
                     return adjusted_waypoint; // Collision-free waypoint found
                 }
             }
-
+        
             // Move the waypoint in the negative yaw direction by 0.5 meters
             adjusted_waypoint.pose.position.x -= 0.5 * std::cos(yaw);
             adjusted_waypoint.pose.position.y -= 0.5 * std::sin(yaw);
@@ -212,6 +214,15 @@ private:
     
         if (distance > interpolation_distance_) {
             int num_intermediate_points = static_cast<int>(std::ceil(distance / interpolation_distance_));
+
+            // Extract start and goal yaw
+            tf2::Quaternion start_quat, goal_quat;
+            tf2::fromMsg(start.pose.orientation, start_quat);
+            tf2::fromMsg(goal.pose.orientation, goal_quat);
+            double start_yaw = tf2::getYaw(start_quat);
+            double goal_yaw = tf2::getYaw(goal_quat);
+
+
             for (int i = 1; i <= num_intermediate_points; ++i) {
                 float t = static_cast<float>(i) / (num_intermediate_points + 1);
                 geometry_msgs::msg::PoseStamped intermediate;
@@ -219,23 +230,31 @@ private:
                 intermediate.pose.position.x = start.pose.position.x + t * (goal.pose.position.x - start.pose.position.x);
                 intermediate.pose.position.y = start.pose.position.y + t * (goal.pose.position.y - start.pose.position.y);
                 intermediate.pose.position.z = start.pose.position.z + t * (goal.pose.position.z - start.pose.position.z);
-    
-                // Calculate yaw and convert to quaternion
-                float yaw = std::atan2(
-                    goal.pose.position.y - start.pose.position.y,
-                    goal.pose.position.x - start.pose.position.x);
+                
+
+                // Interpolate yaw
+                double delta_yaw = goal_yaw - start_yaw;
+                if (delta_yaw > M_PI) {
+                    delta_yaw -= 2 * M_PI; // Wrap around
+                } else if (delta_yaw < -M_PI) {
+                    delta_yaw += 2 * M_PI; // Wrap around
+                }
+                double interpolated_yaw = start_yaw + t * delta_yaw;
+
+                 // Convert interpolated yaw to quaternion
                 tf2::Quaternion quaternion;
-                quaternion.setRPY(0, 0, yaw);
+                quaternion.setRPY(0, 0, interpolated_yaw);
                 intermediate.pose.orientation = tf2::toMsg(quaternion);
     
                 // Adjust the waypoint for collision-free zones
-                geometry_msgs::msg::PoseStamped adjusted_intermediate = adjustWaypointForCollision(intermediate, yaw, resolution, 20);
+                geometry_msgs::msg::PoseStamped adjusted_intermediate = adjustWaypointForCollision(intermediate, interpolated_yaw, resolution, 20);
                 if (!adjusted_intermediate.header.frame_id.empty()) {
                     waypoints.push_back(adjusted_intermediate);
                 }
             }
         }
         waypoints.push_back(adjusted_goal);
+        return waypoints; // test
     
         // Plan path between consecutive waypoints using A*
         std::vector<geometry_msgs::msg::PoseStamped> full_path;
