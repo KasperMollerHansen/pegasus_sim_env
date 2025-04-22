@@ -140,7 +140,7 @@ private:
 
         // Publish the planned path up to the last successful segment
         if (!planned_path.poses.empty()) {
-            // planned_path.poses = smoothPath(planned_path.poses, interpolation_distance_);
+            planned_path.poses = smoothPath(planned_path.poses, interpolation_distance_);
             path_pub_->publish(planned_path);
             RCLCPP_INFO(this->get_logger(), "Published planned path with %zu poses", planned_path.poses.size());
         } else {
@@ -148,6 +148,7 @@ private:
         }
     }
 
+    // Function to interpolate yaw between two poses
     tf2::Quaternion interpolateYaw(
         const geometry_msgs::msg::Pose &start_pose,
         const geometry_msgs::msg::Pose &goal_pose,
@@ -208,6 +209,7 @@ private:
         return adjusted_waypoint;
     }
 
+    // A* path planning function
     std::vector<geometry_msgs::msg::PoseStamped> planPath(
         const geometry_msgs::msg::PoseStamped &start,
         const geometry_msgs::msg::PoseStamped &goal) {
