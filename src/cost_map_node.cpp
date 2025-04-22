@@ -141,17 +141,19 @@ private:
         // Clear the local area corresponding to the center of the global map
         double clear_radius = free_center_radius_; // Radius in meters
         int clear_radius_cells = static_cast<int>(clear_radius / resolution_);
-        int center_x = local_grid_size_ / 2;
-        int center_y = local_grid_size_ / 2;
+
+        // Calculate the center of the global map in the local map's coordinate system
+        int global_center_x = static_cast<int>((global_map_.info.origin.position.x + global_half_size_ - local_map.info.origin.position.x) / resolution_);
+        int global_center_y = static_cast<int>((global_map_.info.origin.position.y + global_half_size_ - local_map.info.origin.position.y) / resolution_);
 
         for (int y = 0; y < local_grid_size_; ++y) {
             for (int x = 0; x < local_grid_size_; ++x) {
-                int dx = x - center_x;
-                int dy = y - center_y;
+                int dx = x - global_center_x;
+                int dy = y - global_center_y;
                 if (dx * dx + dy * dy <= clear_radius_cells * clear_radius_cells) {
                     local_map.data[y * local_grid_size_ + x] = 0; // Clear cell
                 }
-            }   
+            }
         }
 
         // Merge the updated local map back into the global map
@@ -182,7 +184,7 @@ private:
 
         RCLCPP_INFO(this->get_logger(), "Published local and global cost maps.");
     }
-    
+
     // Parameters and computed values
     double resolution_;
     double free_center_radius_;
