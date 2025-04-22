@@ -197,10 +197,7 @@ private:
                 if (costmap_->data[index] <= obstacle_threshold_) {
                     return adjusted_waypoint; // Collision-free waypoint found
                 }
-            } else {
-                return adjusted_waypoint;
-            }
-        
+            }          
             // Move the waypoint in the negative yaw direction by 0.5 meters
             adjusted_waypoint.pose.position.x -= 0.5 * std::cos(yaw);
             adjusted_waypoint.pose.position.y -= 0.5 * std::sin(yaw);
@@ -268,7 +265,6 @@ private:
             }
         }
         waypoints.push_back(adjusted_goal);
-        return waypoints; // This is a test
 
         // Plan path between consecutive waypoints using A*
         std::vector<geometry_msgs::msg::PoseStamped> full_path;
