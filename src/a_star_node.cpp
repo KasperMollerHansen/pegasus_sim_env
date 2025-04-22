@@ -150,8 +150,13 @@ private:
 
     // Function to check and adjust waypoints for collision-free zones
     geometry_msgs::msg::PoseStamped adjustWaypointForCollision(
-        const geometry_msgs::msg::PoseStamped &waypoint, float yaw, float resolution, int max_attempts) {
+        const geometry_msgs::msg::PoseStamped &waypoint, float resolution, int max_attempts) {
         geometry_msgs::msg::PoseStamped adjusted_waypoint = waypoint;
+
+        // Extract yaw from the waypoint's quaternion only after the bounds check
+        tf2::Quaternion quat;
+        tf2::fromMsg(adjusted_waypoint.pose.orientation, quat);
+        double yaw = tf2::getYaw(quat);
 
         for (int attempt = 0; attempt < max_attempts; ++attempt) {
             // Convert waypoint position to costmap indices
@@ -197,8 +202,8 @@ private:
         };
     
         // Adjust the start and goal waypoints for collision-free zones
-        geometry_msgs::msg::PoseStamped adjusted_start = adjustWaypointForCollision(start, 0.0, resolution, 20);
-        geometry_msgs::msg::PoseStamped adjusted_goal = adjustWaypointForCollision(goal, 0.0, resolution, 20);
+        geometry_msgs::msg::PoseStamped adjusted_start = adjustWaypointForCollision(start, resolution, 20);
+        geometry_msgs::msg::PoseStamped adjusted_goal = adjustWaypointForCollision(goal, resolution, 20);
     
         if (adjusted_start.header.frame_id.empty() || adjusted_goal.header.frame_id.empty()) {
             RCLCPP_WARN(this->get_logger(), "Start or goal waypoint could not be adjusted to a collision-free zone");
@@ -247,7 +252,7 @@ private:
                 intermediate.pose.orientation = tf2::toMsg(quaternion);
     
                 // Adjust the waypoint for collision-free zones
-                geometry_msgs::msg::PoseStamped adjusted_intermediate = adjustWaypointForCollision(intermediate, interpolated_yaw, resolution, 20);
+                geometry_msgs::msg::PoseStamped adjusted_intermediate = adjustWaypointForCollision(intermediate, resolution, 20);
                 if (!adjusted_intermediate.header.frame_id.empty()) {
                     waypoints.push_back(adjusted_intermediate);
                 }
