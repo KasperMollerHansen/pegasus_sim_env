@@ -334,6 +334,7 @@ private:
     
         return full_path;
     }
+    
     std::vector<geometry_msgs::msg::PoseStamped> smoothPath(
         const std::vector<geometry_msgs::msg::PoseStamped> &path, double interpolation_distance) {
         if (path.size() < 2) {
