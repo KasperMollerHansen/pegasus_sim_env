@@ -29,17 +29,17 @@ def generate_launch_description():
                 {'interpolation_distance': 2.0},    # Interpolation distance
             ]
         ),
-        # Node(
-        #     package='pegasus_sim_env',              # Replace with your package name
-        #     executable='vel_controller',            # Replace with your node executable name
-        #     name='velocity_controller',
-        #     output='screen',
-        #     parameters=[
-        #         {'interpolation_distance': 2.0},    # Interpolation distance
-        #         {'frame_id': 'base_link'},          # Map centered at base_link
-        #         {'max_velocity': 10.0},             # Maximum velocity
-        #         {'min_velocity': 1.0},              # Minimum velocity
-        #         {'max_acceleration': 0.5},          # Acceleration
-        #     ]
-        # ),
+        Node(
+            package='pegasus_sim_env',              # Replace with your package name
+            executable='vel_controller',            # Replace with your node executable name
+            name='velocity_controller',
+            output='screen',
+            parameters=[
+                {'interpolation_distance': 2.0},    # Interpolation distance
+                {'frame_id': 'base_link'},          # Map centered at base_link
+                {'max_velocity': 10.0},             # Maximum velocity
+                {'min_velocity': 1.0},              # Minimum velocity
+                {'max_acceleration': 0.5},          # Acceleration
+            ]
+        ),
     ])
