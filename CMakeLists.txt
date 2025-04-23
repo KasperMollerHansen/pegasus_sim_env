@@ -57,14 +57,6 @@ ament_target_dependencies(setpoints_node
   tf2_ros
 )
 
-# Add executable for src/nav2_navigation.cpp
-add_executable(nav2_navigation src/nav2_navigation.cpp)
-ament_target_dependencies(nav2_navigation
-  rclcpp 
-  px4_msgs
-  geometry_msgs
-)
-
 # Add executable for src/cost_map_node.cpp
 add_executable(cost_map_node src/cost_map_node.cpp)
 ament_target_dependencies(cost_map_node
@@ -89,11 +81,20 @@ ament_target_dependencies(a_star_node
   tf2_geometry_msgs 
 )
 
+add_executable(vel_controller src/vel_controller.cpp)
+ament_target_dependencies(vel_controller
+  rclcpp 
+  px4_msgs
+  nav_msgs
+  tf2
+  tf2_ros
+)
+
 install(TARGETS 
   setpoints_node
-  nav2_navigation
   cost_map_node
   a_star_node
+  vel_controller
   DESTINATION lib/${PROJECT_NAME}
 )
 
