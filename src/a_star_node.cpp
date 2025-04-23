@@ -146,7 +146,7 @@ private:
 
         // Publish the planned path up to the last successful segment
         if (!planned_path.poses.empty()) {
-            planned_path.poses = smoothPath(planned_path.poses, interpolation_distance_);
+            // planned_path.poses = smoothPath(planned_path.poses, interpolation_distance_);
             // Implement minimum snap smoothing
             planned_path.header.stamp = this->now(); // Update the timestamp
             planned_path.header.frame_id = costmap_->header.frame_id; // Set the frame ID
@@ -323,7 +323,7 @@ private:
     
                     int index = toIndex(next_x, next_y);
                     if (costmap_->data[index] > 0) {
-                        continue;
+                        continue; // Skip this cell as it is an obstacle
                     }
     
                     float new_cost = cost_so_far[toIndex(current.x, current.y)] + 1;

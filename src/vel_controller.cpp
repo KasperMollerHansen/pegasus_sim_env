@@ -14,6 +14,7 @@
 #include <tf2/utils.h>
 #include <tf2_ros/transform_listener.h>
 #include <tf2_ros/buffer.h>
+#include <vector>
 
 using namespace std::chrono;
 using namespace std::chrono_literals;
@@ -27,14 +28,14 @@ public:
     {
         this->declare_parameter<double>("interpolation_distance", 2.0);
         this->declare_parameter<std::string>("frame_id", "base_link");
-        this->declare_parameter<double>("speed_limit", 4.0);
-        this->declare_parameter<double>("min_speed", 1.5);
-        this->declare_parameter<double>("max_acceleration", 0.05);
+        this->declare_parameter<double>("max_velocity", 10.0);
+        this->declare_parameter<double>("min_velocity", 1.0);
+        this->declare_parameter<double>("max_acceleration", 0.5);
 
         interpolation_distance_ = this->get_parameter("interpolation_distance").as_double();
         frame_id_ = this->get_parameter("frame_id").as_string();
-        speed_limit_ = this->get_parameter("speed_limit").as_double();
-        min_speed_ = this->get_parameter("min_speed").as_double();
+        max_velocity_ = this->get_parameter("max_velocity").as_double();
+        min_velocity_ = this->get_parameter("min_velocity").as_double();
         max_acceleration_ = this->get_parameter("max_acceleration").as_double();
 
         // Publishers
@@ -86,8 +87,8 @@ private:
     void process_path(const Path::SharedPtr msg);
     std::string frame_id_;
     double interpolation_distance_;
-    double speed_limit_;
-    double min_speed_;
+    double max_velocity_;
+    double min_velocity_;
     double max_acceleration_;
 };
 
@@ -125,12 +126,42 @@ void OffboardControl::publish_offboard_control_mode_velocity()
     RCLCPP_INFO(this->get_logger(), "Published Offboard Control Mode (Velocity)");
 }
 
-/**
- * @brief Publish vehicle commands
- * @param command   Command code (matches VehicleCommand and MAVLink MAV_CMD codes)
- * @param param1    Command parameter 1
- * @param param2    Command parameter 2
- */
+int countStraightLinePoints(const std::vector<geometry_msgs::msg::PoseStamped> &poses) {
+    if (poses.size() < 3) {
+        // Less than 3 points cannot form a line
+        return poses.size();
+    }
+
+    int count = 1; // Start with the first point
+    Eigen::Vector3d prev_direction;
+
+    for (size_t i = 1; i < poses.size() - 1; ++i) {
+        // Calculate direction vectors
+        Eigen::Vector3d dir1(
+            poses[i].pose.position.x - poses[i - 1].pose.position.x,
+            poses[i].pose.position.y - poses[i - 1].pose.position.y,
+            poses[i].pose.position.z - poses[i - 1].pose.position.z);
+
+        Eigen::Vector3d dir2(
+            poses[i + 1].pose.position.x - poses[i].pose.position.x,
+            poses[i + 1].pose.position.y - poses[i].pose.position.y,
+            poses[i + 1].pose.position.z - poses[i].pose.position.z);
+
+        // Normalize the direction vectors
+        dir1.normalize();
+        dir2.normalize();
+
+        // Check if the direction vectors are collinear
+        if ((dir1.cross(dir2)).norm() < 1e-2) { // Cross product close to zero
+            count++;
+        } else {
+            break; // Stop counting if the line is broken
+        }
+    }
+
+    return count + 1; // Include the last point in the count
+}
+
 void OffboardControl::publish_vehicle_command(uint16_t command, float param1, float param2)
 {
     VehicleCommand msg{};
@@ -148,9 +179,10 @@ void OffboardControl::publish_vehicle_command(uint16_t command, float param1, fl
 }
 
 void OffboardControl::process_path(const Path::SharedPtr msg)
-{
-    static Eigen::Vector3d previous_velocity(0.0, 0.0, 0.0); // Track the previous velocity
-    double dt = 0.1; // Time difference between updates (can be adjusted dynamically)
+{ 
+    static Eigen::Vector3d previous_published_velocity(0.0, 0.0, 0.0); // Track the previous velocity
+    static double previous_velocity = 0.0; // Track the previous speed
+    static double dt = 0.1; // Time difference between updates (can be adjusted dynamically)
 
     // TF2 setup
     geometry_msgs::msg::TransformStamped transform_stamped;
@@ -170,6 +202,23 @@ void OffboardControl::process_path(const Path::SharedPtr msg)
     if (msg->poses.size() >= 2) { // Need at least two poses for velocity and yaw from pose 1
         RCLCPP_INFO(this->get_logger(), "Received Path with %zu poses", msg->poses.size());
 
+        int straight_line_points = countStraightLinePoints(msg->poses);
+        RCLCPP_INFO(this->get_logger(), "Number of points on a straight line: %d", straight_line_points);
+        double velocity = min_velocity_ + 0.1 * straight_line_points;
+        
+        // Clamp the velocity change to a maximum of 0.5
+        if (velocity > previous_velocity + min_velocity_/4.0) {
+            velocity = previous_velocity + min_velocity_/4.0;
+        } else if (velocity < previous_velocity - min_velocity_/4.0) {
+            velocity = previous_velocity - min_velocity_/4.0;
+        }
+        if (velocity > max_velocity_) {
+            velocity = max_velocity_;
+        } else if (velocity < min_velocity_) {
+            velocity = min_velocity_;
+        }
+        previous_velocity = velocity;
+
         const auto &pose0 = msg->poses[0];
         const auto &pose1 = msg->poses[1];
 
@@ -186,16 +235,10 @@ void OffboardControl::process_path(const Path::SharedPtr msg)
             velocity_desired_world = (pos1 - pos_tf) / dt; // Move to next pose
         }
 
-        // Limit the magnitude of the desired velocity
-        double desired_speed = velocity_desired_world.norm();
-        if (desired_speed > speed_limit_ && desired_speed > 1e-6) {
-            velocity_desired_world = velocity_desired_world / desired_speed * speed_limit_;
-        } else if (desired_speed < min_speed_ && desired_speed > 1e-6) {
-            velocity_desired_world = velocity_desired_world / desired_speed * 1.0;
-        }
+        velocity_desired_world = velocity_desired_world / velocity_desired_world.norm() * velocity;
 
         // Calculate acceleration
-        Eigen::Vector3d acceleration_desired_world = (velocity_desired_world - previous_velocity) / dt;
+        Eigen::Vector3d acceleration_desired_world = (velocity_desired_world - previous_published_velocity) / dt;
 
         // Limit the magnitude of the acceleration
         double acceleration_magnitude = acceleration_desired_world.norm();
@@ -242,6 +285,9 @@ void OffboardControl::process_path(const Path::SharedPtr msg)
         trajectory_setpoint_publisher_->publish(setpoint_msg);
         RCLCPP_INFO(this->get_logger(), "Published Velocity Setpoint: [%f, %f, %f] m/s, Yaw: %f rad",
                     setpoint_msg.velocity[0], setpoint_msg.velocity[1], setpoint_msg.velocity[2], setpoint_msg.yaw);
+
+        // Update the previous velocity for the next iteration
+        previous_published_velocity = velocity_desired_world;            
 
         // Arm the drone if it's not armed
         if (!armed_) {
