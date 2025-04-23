@@ -146,7 +146,7 @@ private:
 
         // Publish the planned path up to the last successful segment
         if (!planned_path.poses.empty()) {
-            planned_path.poses = smoothPath(planned_path.poses, interpolation_distance_);
+            // planned_path.poses = smoothPath(planned_path.poses, interpolation_distance_);
             path_pub_->publish(planned_path);
             RCLCPP_INFO(this->get_logger(), "Published planned path with %zu poses", planned_path.poses.size());
         } else {
@@ -391,73 +391,9 @@ private:
             return path;
         }
     
-        // Simplify the path using the Ramer-Douglas-Peucker algorithm
-        auto simplifyPath = [](const std::vector<geometry_msgs::msg::PoseStamped> &path, double epsilon) {
-            if (path.size() < 3) {
-                return path; // No simplification needed
-            }
-    
-            std::vector<bool> keep(path.size(), false);
-            keep.front() = true;  // Always keep the first point
-            keep.back() = true;   // Always keep the last point
-    
-            std::function<void(size_t, size_t)> rdp = [&](size_t start, size_t end) {
-                if (start + 1 >= end) {
-                    return; // No points to simplify
-                }
-    
-                // Find the point farthest from the line segment [start, end]
-                double max_distance = 0.0;
-                size_t farthest_index = start;
-    
-                const auto &start_point = path[start].pose.position;
-                const auto &end_point = path[end].pose.position;
-    
-                for (size_t i = start + 1; i < end; ++i) {
-                    const auto &current_point = path[i].pose.position;
-    
-                    // Calculate perpendicular distance to the line
-                    double num = std::abs((end_point.y - start_point.y) * current_point.x -
-                                          (end_point.x - start_point.x) * current_point.y +
-                                          end_point.x * start_point.y - end_point.y * start_point.x);
-                    double den = std::sqrt(std::pow(end_point.y - start_point.y, 2) +
-                                           std::pow(end_point.x - start_point.x, 2));
-                    double distance = num / den;
-    
-                    if (distance > max_distance) {
-                        max_distance = distance;
-                        farthest_index = i;
-                    }
-                }
-    
-                // If the farthest point is farther than epsilon, keep it
-                if (max_distance > epsilon) {
-                    keep[farthest_index] = true;
-                    rdp(start, farthest_index);
-                    rdp(farthest_index, end);
-                }
-            };
-    
-            rdp(0, path.size() - 1);
-    
-            // Build the simplified path
-            std::vector<geometry_msgs::msg::PoseStamped> simplified_path;
-            for (size_t i = 0; i < path.size(); ++i) {
-                if (keep[i]) {
-                    simplified_path.push_back(path[i]);
-                }
-            }
-    
-            return simplified_path;
-        };
-    
-        // Simplify the path with a chosen epsilon value
-        double epsilon = interpolation_distance; // Adjust epsilon as needed
-        std::vector<geometry_msgs::msg::PoseStamped> simplified_path = simplifyPath(path, epsilon);
-    
-        // Smooth the simplified path using cubic spline interpolation
+        // Extract x, y, z, and yaw values
         std::vector<double> x, y, z, yaw;
-        for (const auto &pose : simplified_path) {
+        for (const auto &pose : path) {
             x.push_back(pose.pose.position.x);
             y.push_back(pose.pose.position.y);
             z.push_back(pose.pose.position.z);
@@ -467,6 +403,13 @@ private:
             tf2::fromMsg(pose.pose.orientation, quat);
             yaw.push_back(tf2::getYaw(quat));
         }
+    
+        // Detect if the path is predominantly vertical
+        double x_range = *std::max_element(x.begin(), x.end()) - *std::min_element(x.begin(), x.end());
+        double y_range = *std::max_element(y.begin(), y.end()) - *std::min_element(y.begin(), y.end());
+        double z_range = *std::max_element(z.begin(), z.end()) - *std::min_element(z.begin(), z.end());
+    
+        bool is_vertical = (z_range > x_range * 2.0) && (z_range > y_range * 2.0);
     
         // Generate a parameter t for interpolation (e.g., cumulative distance)
         std::vector<double> t(x.size(), 0.0);
@@ -508,16 +451,29 @@ private:
             return result;
         };
     
-        std::vector<double> x_smooth = cubicSpline(t, x, t_new);
-        std::vector<double> y_smooth = cubicSpline(t, y, t_new);
-        std::vector<double> z_smooth = cubicSpline(t, z, t_new);
-        std::vector<double> yaw_smooth = cubicSpline(t, yaw, t_new);
+        std::vector<double> x_smooth, y_smooth, z_smooth, yaw_smooth;
+    
+        if (is_vertical) {
+            // For predominantly vertical paths, only interpolate z and yaw
+            z_smooth = cubicSpline(t, z, t_new);
+            yaw_smooth = cubicSpline(t, yaw, t_new);
+    
+            // Use the original x and y values for all points
+            x_smooth.assign(num_points, x.front());
+            y_smooth.assign(num_points, y.front());
+        } else {
+            // For general paths, interpolate all dimensions
+            x_smooth = cubicSpline(t, x, t_new);
+            y_smooth = cubicSpline(t, y, t_new);
+            z_smooth = cubicSpline(t, z, t_new);
+            yaw_smooth = cubicSpline(t, yaw, t_new);
+        }
     
         // Reconstruct the smoothed path
         std::vector<geometry_msgs::msg::PoseStamped> smoothed_path;
         for (size_t i = 0; i < t_new.size(); ++i) {
             geometry_msgs::msg::PoseStamped pose;
-            pose.header = simplified_path.front().header; // Use the same header
+            pose.header = path.front().header; // Use the same header
             pose.pose.position.x = x_smooth[i];
             pose.pose.position.y = y_smooth[i];
             pose.pose.position.z = z_smooth[i];
