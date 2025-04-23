@@ -88,6 +88,7 @@ ament_target_dependencies(vel_controller
   nav_msgs
   tf2
   tf2_ros
+  Eigen3
 )
 
 install(TARGETS 

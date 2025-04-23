@@ -322,7 +322,7 @@ private:
                     }
     
                     int index = toIndex(next_x, next_y);
-                    if (costmap_->data[index] > obstacle_threshold_) {
+                    if (costmap_->data[index] > 0) {
                         continue;
                     }
     
