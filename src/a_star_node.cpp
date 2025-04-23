@@ -146,7 +146,7 @@ private:
 
         // Publish the planned path up to the last successful segment
         if (!planned_path.poses.empty()) {
-            // planned_path.poses = smoothPath(planned_path.poses, interpolation_distance_);
+            // planned_path.poses = smoothPath(planned_path.poses, interpolation_distance_); // Uncomment if smoothing is needed
             // Implement minimum snap smoothing
             planned_path.header.stamp = this->now(); // Update the timestamp
             planned_path.header.frame_id = costmap_->header.frame_id; // Set the frame ID

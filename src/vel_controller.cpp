@@ -132,27 +132,27 @@ int countStraightLinePoints(const std::vector<geometry_msgs::msg::PoseStamped> &
         return poses.size();
     }
 
-    int count = 1; // Start with the first point
+    int count = 2; // Start with the first point
     Eigen::Vector3d prev_direction;
 
-    for (size_t i = 1; i < poses.size() - 1; ++i) {
+    for (size_t i = 2; i < poses.size() - 1; ++i) {
         // Calculate direction vectors
         Eigen::Vector3d dir1(
-            poses[i].pose.position.x - poses[i - 1].pose.position.x,
-            poses[i].pose.position.y - poses[i - 1].pose.position.y,
-            poses[i].pose.position.z - poses[i - 1].pose.position.z);
+            poses[i].pose.position.x - poses[i - 2].pose.position.x,
+            poses[i].pose.position.y - poses[i - 2].pose.position.y,
+            poses[i].pose.position.z - poses[i - 2].pose.position.z);
 
         Eigen::Vector3d dir2(
-            poses[i + 1].pose.position.x - poses[i].pose.position.x,
-            poses[i + 1].pose.position.y - poses[i].pose.position.y,
-            poses[i + 1].pose.position.z - poses[i].pose.position.z);
+            poses[i + 2].pose.position.x - poses[i].pose.position.x,
+            poses[i + 2].pose.position.y - poses[i].pose.position.y,
+            poses[i + 2].pose.position.z - poses[i].pose.position.z);
 
         // Normalize the direction vectors
         dir1.normalize();
         dir2.normalize();
 
         // Check if the direction vectors are collinear
-        if ((dir1.cross(dir2)).norm() < 1e-2) { // Cross product close to zero
+        if ((dir1.cross(dir2)).norm() < 1e-6) { // Cross product close to zero
             count++;
         } else {
             break; // Stop counting if the line is broken
