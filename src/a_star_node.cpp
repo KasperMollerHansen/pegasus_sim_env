@@ -222,6 +222,8 @@ private:
             RCLCPP_ERROR(this->get_logger(), "No costmap available");
             return {};
         }
+
+        bool invalid_flag = false;
     
         int width = costmap_->info.width;
         int height = costmap_->info.height;
@@ -265,12 +267,17 @@ private:
     
                 // Adjust the waypoint for collision-free zones
                 geometry_msgs::msg::PoseStamped adjusted_intermediate = adjustWaypointForCollision(intermediate, resolution, 20);
-                if (!adjusted_intermediate.header.frame_id.empty()) {
+                if (adjusted_intermediate.header.frame_id.empty()) {
+                    invalid_flag = true;
+                } else {
                     waypoints.push_back(adjusted_intermediate);
                 }
             }
         }
         waypoints.push_back(adjusted_goal);
+        if (!invalid_flag) {
+            return waypoints; // Return the waypoints if all are valid
+        }
 
         // Plan path between consecutive waypoints using A*
         std::vector<geometry_msgs::msg::PoseStamped> full_path;
