@@ -146,7 +146,11 @@ private:
 
         // Publish the planned path up to the last successful segment
         if (!planned_path.poses.empty()) {
-            // planned_path.poses = smoothPath(planned_path.poses, interpolation_distance_);
+            planned_path.poses = smoothPath(planned_path.poses, interpolation_distance_);
+            // Implement minimum snap smoothing
+            planned_path.header.stamp = this->now(); // Update the timestamp
+            planned_path.header.frame_id = costmap_->header.frame_id; // Set the frame ID
+            // Publish the planned path
             path_pub_->publish(planned_path);
             RCLCPP_INFO(this->get_logger(), "Published planned path with %zu poses", planned_path.poses.size());
         } else {
