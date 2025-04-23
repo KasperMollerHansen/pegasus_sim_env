@@ -77,9 +77,8 @@ ament_target_dependencies(cost_map_node
   pcl_ros
 )
 
-add_executable(a_star_node src/a_star_node.cpp)
-
 # Add executable for src/a_star_node.cpp
+add_executable(a_star_node src/a_star_node.cpp)
 ament_target_dependencies(a_star_node
   rclcpp
   nav_msgs
