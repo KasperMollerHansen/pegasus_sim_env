@@ -22,7 +22,7 @@ class TestFlight(Node):
         # Configure QoS profile to match AStarPlanner
         qos_profile = QoSProfile(
             reliability=ReliabilityPolicy.RELIABLE,  # Matches AStarPlanner
-            durability=DurabilityPolicy.TRANSIENT_LOCAL,  # Matches AStarPlanner
+            durability=DurabilityPolicy.VOLATILE,  # Matches AStarPlanner
             history=HistoryPolicy.KEEP_LAST,  # Matches AStarPlanner
             depth=1,  # Matches AStarPlanner
         )
@@ -101,11 +101,14 @@ class TestFlight(Node):
 
     def update_coordinates(self) -> None:
         target = self.coordinates[self.current_checkpoint]
+        next_target = self.coordinates[(self.current_checkpoint + 1) % len(self.coordinates)]
         current = self.vehicle_odometry.position
         current = self.transform_position(current)
         target = np.array(target)
         current = np.array(current)
         if np.linalg.norm(current - target) < 2.0:
+            self.current_checkpoint += 1
+        elif np.linalg.norm(current - next_target) < 2.0:
             self.current_checkpoint += 1
 
     @staticmethod

@@ -29,8 +29,8 @@ public:
         // Define QoS profile for the subscriber
         rclcpp::QoS qos_profile(rclcpp::KeepLast(1));
         qos_profile.reliability(RMW_QOS_POLICY_RELIABILITY_BEST_EFFORT);
-        qos_profile.durability(RMW_QOS_POLICY_DURABILITY_TRANSIENT_LOCAL);
-
+        qos_profile.durability(RMW_QOS_POLICY_DURABILITY_VOLATILE);
+        
         // Create subscriber for vehicle control mode (to check the armed status)
         arming_status_subscriber_ = this->create_subscription<VehicleControlMode>(
             "/fmu/out/vehicle_control_mode", qos_profile, [this](const VehicleControlMode::SharedPtr msg) {

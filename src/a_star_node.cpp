@@ -43,7 +43,7 @@ public:
         // QoS profile for subscriptions
         rclcpp::QoS qos_profile(rclcpp::KeepLast(1));
         qos_profile.reliability(RMW_QOS_POLICY_RELIABILITY_BEST_EFFORT);
-        qos_profile.durability(RMW_QOS_POLICY_DURABILITY_TRANSIENT_LOCAL);
+        qos_profile.durability(RMW_QOS_POLICY_DURABILITY_VOLATILE);
 
         // Subscribe to the local costmap
         costmap_sub_ = this->create_subscription<nav_msgs::msg::OccupancyGrid>(

@@ -29,7 +29,7 @@ public:
         // Define QoS profile for the subscriber
         rclcpp::QoS qos_profile(rclcpp::KeepLast(1));
         qos_profile.reliability(RMW_QOS_POLICY_RELIABILITY_BEST_EFFORT);
-        qos_profile.durability(RMW_QOS_POLICY_DURABILITY_TRANSIENT_LOCAL);
+        qos_profile.durability(RMW_QOS_POLICY_DURABILITY_VOLATILE);
 
         // Create subscriber for vehicle control mode (to check the armed status)
         arming_status_subscriber_ = this->create_subscription<VehicleControlMode>(
@@ -49,7 +49,7 @@ public:
                     RCLCPP_INFO(this->get_logger(), "Received Path with %zu poses", msg->poses.size());
 
                     // Extract the first pose from the Path
-                    const auto &first_pose = msg->poses[0];
+                    const auto &first_pose = msg->poses[2];
 
                     // Convert PoseStamped to TrajectorySetpoint
                     TrajectorySetpoint setpoint_msg{};
