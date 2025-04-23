@@ -182,7 +182,7 @@ void OffboardControl::process_path(const Path::SharedPtr msg)
 { 
     static Eigen::Vector3d previous_published_velocity(0.0, 0.0, 0.0); // Track the previous velocity
     static double previous_velocity = 0.0; // Track the previous speed
-    static double dt = 0.1; // Time difference between updates (can be adjusted dynamically)
+    static double dt = 1; // Time difference between updates (can be adjusted dynamically)
 
     // TF2 setup
     geometry_msgs::msg::TransformStamped transform_stamped;
