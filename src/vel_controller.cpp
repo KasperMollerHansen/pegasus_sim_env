@@ -132,10 +132,10 @@ int countStraightLinePoints(const std::vector<geometry_msgs::msg::PoseStamped> &
         return poses.size();
     }
 
-    int count = 2; // Start with the first point
+    int count = 2; // Start with the 2nd point
     Eigen::Vector3d prev_direction;
 
-    for (size_t i = 2; i < poses.size() - 1; ++i) {
+    for (size_t i = 2; i < poses.size() - 2; ++i) {
         // Calculate direction vectors
         Eigen::Vector3d dir1(
             poses[i].pose.position.x - poses[i - 2].pose.position.x,
