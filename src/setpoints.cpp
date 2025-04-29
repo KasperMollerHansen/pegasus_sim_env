@@ -2,8 +2,11 @@
 #include <px4_msgs/msg/trajectory_setpoint.hpp>
 #include <px4_msgs/msg/vehicle_command.hpp>
 #include <px4_msgs/msg/vehicle_control_mode.hpp>
+#include <nav_msgs/msg/path.hpp>
 #include <rclcpp/rclcpp.hpp>
 #include <rclcpp/qos.hpp>
+#include <tf2/LinearMath/Quaternion.h>
+#include <tf2/LinearMath/Matrix3x3.h>
 #include <stdint.h>
 #include <chrono>
 #include <iostream>
@@ -11,6 +14,7 @@
 using namespace std::chrono;
 using namespace std::chrono_literals;
 using namespace px4_msgs::msg;
+using namespace nav_msgs::msg;
 
 class OffboardControl : public rclcpp::Node
 {
@@ -25,8 +29,8 @@ public:
         // Define QoS profile for the subscriber
         rclcpp::QoS qos_profile(rclcpp::KeepLast(1));
         qos_profile.reliability(RMW_QOS_POLICY_RELIABILITY_BEST_EFFORT);
-        qos_profile.durability(RMW_QOS_POLICY_DURABILITY_TRANSIENT_LOCAL);
-
+        qos_profile.durability(RMW_QOS_POLICY_DURABILITY_VOLATILE);
+        
         // Create subscriber for vehicle control mode (to check the armed status)
         arming_status_subscriber_ = this->create_subscription<VehicleControlMode>(
             "/fmu/out/vehicle_control_mode", qos_profile, [this](const VehicleControlMode::SharedPtr msg) {
@@ -38,19 +42,46 @@ public:
                 }
             });
 
-        // Create subscriber for trajectory setpoints
-        trajectory_setpoint_subscriber_ = this->create_subscription<TrajectorySetpoint>(
-            "in/target_setpoint", qos_profile, [this](const TrajectorySetpoint::SharedPtr msg) {
-                RCLCPP_INFO(this->get_logger(), "Received target setpoint");
+        // Subscribe to the Path topic
+        path_subscriber_ = this->create_subscription<Path>(
+            "/in/trajectory_path", qos_profile, [this](const Path::SharedPtr msg) {
+                if (!msg->poses.empty()) {
+                    RCLCPP_INFO(this->get_logger(), "Received Path with %zu poses", msg->poses.size());
 
-                // Publish Offboard Control Mode and Trajectory Setpoint
-                publish_offboard_control_mode();
-                publish_trajectory_setpoint(msg);
+                    // Extract the first pose from the Path
+                    const auto &first_pose = msg->poses[0];
 
-                // Arm the drone if it's not armed
-                if (!armed_) {
-                    publish_vehicle_command(VehicleCommand::VEHICLE_CMD_DO_SET_MODE, 1, 6);
-                    arm();
+                    // Convert PoseStamped to TrajectorySetpoint
+                    TrajectorySetpoint setpoint_msg{};
+                    setpoint_msg.position = {
+                        static_cast<float>(first_pose.pose.position.y), // y
+                        static_cast<float>(first_pose.pose.position.x), // x
+                        static_cast<float>(-first_pose.pose.position.z) // -z
+                    };
+
+                    // Extract yaw from the quaternion and add M_PI / 2.0
+                    tf2::Quaternion q(
+                        first_pose.pose.orientation.x,
+                        first_pose.pose.orientation.y,
+                        first_pose.pose.orientation.z,
+                        first_pose.pose.orientation.w);
+                    tf2::Matrix3x3 m(q);
+                    double roll, pitch, yaw;
+                    m.getRPY(roll, pitch, yaw);
+                    setpoint_msg.yaw = static_cast<float>(-yaw + M_PI / 2.0); // Adjust yaw to pegasus
+
+                    // Publish the TrajectorySetpoint
+                    publish_offboard_control_mode();
+                    trajectory_setpoint_publisher_->publish(setpoint_msg);
+                    RCLCPP_INFO(this->get_logger(), "Published Trajectory Setpoint to first Path pose");
+
+                    // Arm the drone if it's not armed
+                    if (!armed_) {
+                        publish_vehicle_command(VehicleCommand::VEHICLE_CMD_DO_SET_MODE, 1, 6);
+                        arm();
+                    }
+                } else {
+                    RCLCPP_WARN(this->get_logger(), "Received empty Path message");
                 }
             });
     }
@@ -64,13 +95,11 @@ private:
     rclcpp::Publisher<TrajectorySetpoint>::SharedPtr trajectory_setpoint_publisher_;
     rclcpp::Publisher<VehicleCommand>::SharedPtr vehicle_command_publisher_;
     rclcpp::Subscription<VehicleControlMode>::SharedPtr arming_status_subscriber_;
-    rclcpp::Subscription<TrajectorySetpoint>::SharedPtr trajectory_setpoint_subscriber_;
+    rclcpp::Subscription<Path>::SharedPtr path_subscriber_;
 
     void publish_offboard_control_mode();
-    void publish_trajectory_setpoint(const TrajectorySetpoint::SharedPtr &received_msg);
     void publish_vehicle_command(uint16_t command, float param1 = 0.0, float param2 = 0.0);
 };
-
 
 /**
  * @brief Send a command to Arm the vehicle
@@ -105,29 +134,6 @@ void OffboardControl::publish_offboard_control_mode()
     msg.timestamp = this->get_clock()->now().nanoseconds() / 1000;
     offboard_control_mode_publisher_->publish(msg);
     RCLCPP_INFO(this->get_logger(), "Published Offboard Control Mode");
-}
-
-/**
- * @brief Publish a trajectory setpoint.
- *        The position is transformed as [x, y, z] -> [y, x, -z].
- */
-void OffboardControl::publish_trajectory_setpoint(const TrajectorySetpoint::SharedPtr &received_msg)
-{
-    TrajectorySetpoint msg{};
-
-    // Transform position: [x, y, z] -> [y, x, -z]
-    msg.position = {received_msg->position[1],  // y
-                    received_msg->position[0],  // x
-                    -received_msg->position[2]}; // -z
-
-    // Transform yaw: yaw -> -yaw
-    msg.yaw = -received_msg->yaw + M_PI / 2.0;
-
-    // Update the timestamp to the current time
-    msg.timestamp = this->get_clock()->now().nanoseconds() / 1000;
-
-    trajectory_setpoint_publisher_->publish(msg);
-    RCLCPP_INFO(this->get_logger(), "Published Transformed Trajectory Setpoint");
 }
 
 /**

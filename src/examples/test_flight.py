@@ -5,13 +5,10 @@ import math
 import numpy as np
 from rclpy.node import Node
 from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy, DurabilityPolicy
-from px4_msgs.msg import (
-    TrajectorySetpoint,
-    VehicleOdometry,
-    VehicleStatus,
-)
-
-from tf2_ros import TransformException
+from px4_msgs.msg import VehicleOdometry, VehicleStatus
+from nav_msgs.msg import Path
+from geometry_msgs.msg import PoseStamped
+from scipy.spatial.transform import Rotation as R
 from tf2_ros.buffer import Buffer
 from tf2_ros.transform_listener import TransformListener
 
@@ -22,16 +19,24 @@ class TestFlight(Node):
     def __init__(self) -> None:
         super().__init__("offboard_control_takeoff_and_land")
 
-        # Configure QoS profile for publishing and subscribing
+        # Configure QoS profile to match AStarPlanner
         qos_profile = QoSProfile(
-            reliability=ReliabilityPolicy.BEST_EFFORT,
-            durability=DurabilityPolicy.TRANSIENT_LOCAL,
-            history=HistoryPolicy.KEEP_LAST,
-            depth=1,
+            reliability=ReliabilityPolicy.RELIABLE,  # Matches AStarPlanner
+            durability=DurabilityPolicy.VOLATILE,  # Matches AStarPlanner
+            history=HistoryPolicy.KEEP_LAST,  # Matches AStarPlanner
+            depth=1,  # Matches AStarPlanner
         )
 
-        self.trajectory_setpoint_publisher = self.create_publisher(
-            TrajectorySetpoint, "in/target_setpoint", qos_profile
+        # Path publisher
+        self.path_publisher = self.create_publisher(
+            Path, "/in/trajectory_path", qos_profile
+        )
+
+        odometry_qos_profile = QoSProfile(
+        reliability=ReliabilityPolicy.BEST_EFFORT,  # Match the publisher's QoS
+        durability=DurabilityPolicy.VOLATILE,      # No need to store messages
+        history=HistoryPolicy.KEEP_LAST,           # Keep only the last message
+        depth=1,                                   # Queue size of 1
         )
 
         # tf topic subscriber
@@ -42,7 +47,7 @@ class TestFlight(Node):
             VehicleOdometry,
             "/fmu/out/vehicle_odometry",
             self.vehicle_odometry_callback,
-            qos_profile,
+            odometry_qos_profile,
         )
 
         self.vehicle_odometry = VehicleOdometry()
@@ -52,7 +57,8 @@ class TestFlight(Node):
         self.vehicle_status = VehicleStatus()
         self.takeoff_height = -5.0
         self.current_checkpoint = 0
-        self.coordinates = generate_coordinates(center_x=200, center_y=0, radius=30, num_points=8, height=125)
+        self.coordinates = generate_coordinates(center_x=200, center_y=0, radius=30, num_points=8, height=120)
+        self.center = [200, 0]  # Center of the circle
         self.yaw = 0.0
 
         # Create a timer to publish control commands
@@ -62,22 +68,47 @@ class TestFlight(Node):
         """Callback function for vehicle_odometry topic subscriber."""
         self.vehicle_odometry = vehicle_odometry
 
-    def publish_position_setpoint(self, position: list, yaw: float) -> None:
-        """Publish the trajectory setpoint."""
-        msg = TrajectorySetpoint()
-        msg.position = position
-        msg.yaw = yaw
-        msg.timestamp = int(self.get_clock().now().nanoseconds / 1000)
-        self.trajectory_setpoint_publisher.publish(msg)
-        self.get_logger().info(f"Publishing global position setpoints {position}")
+    def publish_path(self) -> None:
+        """Publish the next three setpoints as a Path message."""
+        path_msg = Path()
+        path_msg.header.stamp = self.get_clock().now().to_msg()
+        path_msg.header.frame_id = "odom"
+
+        for i in range(3):
+            checkpoint_index = (self.current_checkpoint + i) % len(self.coordinates)
+            position = self.coordinates[checkpoint_index]
+            pose = PoseStamped()
+            pose.header.stamp = self.get_clock().now().to_msg()
+            pose.header.frame_id = "odom"
+            pose.pose.position.x = position[0]
+            pose.pose.position.y = position[1]
+            pose.pose.position.z = position[2]
+
+            # Calculate yaw angle toward the center
+            yaw = math.atan2(self.center[1] - position[1], self.center[0] - position[0])
+
+            # Convert yaw to quaternion
+            quaternion = R.from_euler('xyz', [0, 0, yaw]).as_quat()
+            pose.pose.orientation.x = quaternion[0]
+            pose.pose.orientation.y = quaternion[1]
+            pose.pose.orientation.z = quaternion[2]
+            pose.pose.orientation.w = quaternion[3]
+
+            path_msg.poses.append(pose)
+
+        self.path_publisher.publish(path_msg)
+        self.get_logger().info(f"Publishing path with next 3 setpoints.")
 
     def update_coordinates(self) -> None:
         target = self.coordinates[self.current_checkpoint]
+        next_target = self.coordinates[(self.current_checkpoint + 1) % len(self.coordinates)]
         current = self.vehicle_odometry.position
         current = self.transform_position(current)
         target = np.array(target)
         current = np.array(current)
         if np.linalg.norm(current - target) < 2.0:
+            self.current_checkpoint += 1
+        elif np.linalg.norm(current - next_target) < 2.0:
             self.current_checkpoint += 1
 
     @staticmethod
@@ -86,10 +117,7 @@ class TestFlight(Node):
         return [y, x, -z]
 
     def timer_callback(self) -> None:
-        position = self.coordinates[self.current_checkpoint]
-        position = [pos for pos in position]
-        yaw = np.deg2rad(self.yaw)
-        self.publish_position_setpoint(position, yaw)
+        self.publish_path()
         self.update_coordinates()
 
 
@@ -113,8 +141,9 @@ def calculate_angle(point, center):
 
 def generate_coordinates(center_x=150, center_y=0, center_z=0, radius=75, num_points=90, height=125):
     """Generates coordinates in a circle, starting from the closest point to [0, 0, 50]."""
-    initial_point = [0.0, 0.0, 50.0]
-    end_point = [0.0, 0.0, float(height)]
+    initial_point = [0.0, 0.0, 100.0]
+    initial_point_1 = [5.0, 0.0, 105.0]
+
     generated_points = generate_points_in_radius(center_x, center_y, center_z, radius, num_points, height)
 
     # Find the closest point
@@ -124,7 +153,7 @@ def generate_coordinates(center_x=150, center_y=0, center_z=0, radius=75, num_po
     # Arrange the points in circular order starting from the closest
     ordered_points = generated_points[closest_point_index:] + generated_points[:closest_point_index]
 
-    coordinates = [initial_point]+[ordered_points[0]] + ordered_points[1:] + [end_point]
+    coordinates = [initial_point] + [initial_point_1] + [ordered_points[0]] + ordered_points[1:] + [initial_point]
 
     return coordinates
 

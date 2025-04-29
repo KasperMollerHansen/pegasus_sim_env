@@ -22,7 +22,7 @@ MicroXRCEAgent udp4 -p 8888 &
 
 # Execute the Python script
 echo "Running Python script..."
-python src/pegasus_sim_env/enviroment/pegasus_enviroment.py
+python src/pegasus_sim_env/environment/pegasus_environment.py
 
 # Deactivate the conda environment
 conda deactivate

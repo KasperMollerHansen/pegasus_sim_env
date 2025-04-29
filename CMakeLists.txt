@@ -39,6 +39,7 @@ find_package(geometry_msgs REQUIRED)
 find_package(tf2 REQUIRED)
 find_package(tf2_ros REQUIRED)
 find_package(tf2_sensor_msgs REQUIRED)
+find_package(tf2_geometry_msgs REQUIRED)
 find_package(nav_msgs REQUIRED)
 find_package(pcl_conversions REQUIRED)
 find_package(pcl_ros REQUIRED)
@@ -51,14 +52,9 @@ add_executable(setpoints_node src/setpoints.cpp)
 ament_target_dependencies(setpoints_node
   rclcpp 
   px4_msgs
-)
-
-# Add executable for src/nav2_navigation.cpp
-add_executable(nav2_navigation src/nav2_navigation.cpp)
-ament_target_dependencies(nav2_navigation
-  rclcpp 
-  px4_msgs
-  geometry_msgs
+  nav_msgs
+  tf2
+  tf2_ros
 )
 
 # Add executable for src/cost_map_node.cpp
@@ -73,11 +69,33 @@ ament_target_dependencies(cost_map_node
   pcl_ros
 )
 
+# Add executable for src/a_star_node.cpp
+add_executable(a_star_node src/a_star_node.cpp)
+ament_target_dependencies(a_star_node
+  rclcpp
+  nav_msgs
+  px4_msgs
+  geometry_msgs
+  tf2
+  tf2_ros
+  tf2_geometry_msgs 
+)
+
+add_executable(vel_controller src/vel_controller.cpp)
+ament_target_dependencies(vel_controller
+  rclcpp 
+  px4_msgs
+  nav_msgs
+  tf2
+  tf2_ros
+  Eigen3
+)
 
 install(TARGETS 
   setpoints_node
-  nav2_navigation
   cost_map_node
+  a_star_node
+  vel_controller
   DESTINATION lib/${PROJECT_NAME}
 )
 
