@@ -1,5 +1,6 @@
 from launch import LaunchDescription
 from launch_ros.actions import Node
+import math
 
 def generate_launch_description():
     return LaunchDescription([
@@ -15,7 +16,7 @@ def generate_launch_description():
                 {'global_map_size': 1600.0},        # Global map size (1600 m x 1600 m)
                 {'frame_id': 'base_link'},          # Map centered at base_link
                 {'safety_distance_min': 8.0},       # Minimum safety distance
-                {'safety_distance_max': 16.0},      # Maximum safety distance    
+                {'safety_distance_max': 12.0},      # Maximum safety distance    
             ]
         ),
         Node(
@@ -40,6 +41,7 @@ def generate_launch_description():
                 {'max_velocity': 10.0},             # Maximum velocity
                 {'min_velocity': 1.0},              # Minimum velocity
                 {'max_acceleration': 0.5},          # Acceleration
+                {'max_angle_change': math.pi / 6},  # Maximum angle change (30 degrees)
             ]
         ),
     ])

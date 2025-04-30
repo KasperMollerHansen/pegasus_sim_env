@@ -146,8 +146,9 @@ private:
 
         // Publish the planned path up to the last successful segment
         if (!planned_path.poses.empty()) {
-            // planned_path.poses = smoothPath(planned_path.poses, interpolation_distance_); // Uncomment if smoothing is needed
-            // Implement minimum snap smoothing
+            planned_path.poses = downsamplePath(planned_path.poses, interpolation_distance_*3); // Downsample the path
+            planned_path.poses = smoothPath(planned_path.poses, interpolation_distance_); // Uncomment if smoothing is needed
+            
             planned_path.header.stamp = this->now(); // Update the timestamp
             planned_path.header.frame_id = costmap_->header.frame_id; // Set the frame ID
             // Publish the planned path
@@ -387,6 +388,33 @@ private:
     
         return full_path;
     }
+
+    std::vector<geometry_msgs::msg::PoseStamped> downsamplePath(
+        const std::vector<geometry_msgs::msg::PoseStamped> &path, double min_distance) {
+        if (path.size() < 2) {
+            return path; // Not enough points to downsample
+        }
+    
+        std::vector<geometry_msgs::msg::PoseStamped> downsampled_path;
+        downsampled_path.push_back(path.front()); // Always include the first point
+    
+        for (size_t i = 1; i < path.size(); ++i) {
+            const auto &last_point = downsampled_path.back().pose.position;
+            const auto &current_point = path[i].pose.position;
+    
+            // Calculate the Euclidean distance between the last added point and the current point
+            double distance = std::sqrt(
+                std::pow(current_point.x - last_point.x, 2) +
+                std::pow(current_point.y - last_point.y, 2) +
+                std::pow(current_point.z - last_point.z, 2));
+    
+            if (distance >= min_distance) {
+                downsampled_path.push_back(path[i]); // Add the point if it's far enough
+            }
+        }
+    
+        return downsampled_path;
+    }
     
     std::vector<geometry_msgs::msg::PoseStamped> smoothPath(
         const std::vector<geometry_msgs::msg::PoseStamped> &path, double interpolation_distance) {
@@ -435,9 +463,8 @@ private:
         for (int i = 0; i < num_points; ++i) {
             t_new[i] = i * interpolation_distance;
         }
-    
-        // Perform cubic spline interpolation
-        auto cubicSpline = [](const std::vector<double> &t, const std::vector<double> &values, const std::vector<double> &t_new) {
+
+        auto cubicSpline = [](const std::vector<double> &t, const std::vector<double> &values, const std::vector<double> &t_new, bool is_yaw = false) {
             std::vector<double> result(t_new.size());
             for (size_t i = 0; i < t_new.size(); ++i) {
                 auto it = std::lower_bound(t.begin(), t.end(), t_new[i]);
@@ -449,7 +476,21 @@ private:
                 } else {
                     double t1 = t[idx - 1], t2 = t[idx];
                     double v1 = values[idx - 1], v2 = values[idx];
-                    result[i] = v1 + (v2 - v1) * (t_new[i] - t1) / (t2 - t1);
+        
+                    if (is_yaw) {
+                        // Handle angle wrapping for yaw
+                        double delta_yaw = v2 - v1;
+                        if (delta_yaw > M_PI) {
+                            delta_yaw -= 2 * M_PI;
+                        } else if (delta_yaw < -M_PI) {
+                            delta_yaw += 2 * M_PI;
+                        }
+                        double interpolated_yaw = v1 + (delta_yaw * (t_new[i] - t1) / (t2 - t1));
+                        result[i] = std::fmod(interpolated_yaw + M_PI, 2 * M_PI) - M_PI; // Wrap to [-π, π]
+                    } else {
+                        // Regular interpolation
+                        result[i] = v1 + (v2 - v1) * (t_new[i] - t1) / (t2 - t1);
+                    }
                 }
             }
             return result;
@@ -460,7 +501,7 @@ private:
         if (is_vertical) {
             // For predominantly vertical paths, only interpolate z and yaw
             z_smooth = cubicSpline(t, z, t_new);
-            yaw_smooth = cubicSpline(t, yaw, t_new);
+            yaw_smooth = cubicSpline(t, yaw, t_new, true);
     
             // Use the original x and y values for all points
             x_smooth.assign(num_points, x.front());
@@ -470,7 +511,7 @@ private:
             x_smooth = cubicSpline(t, x, t_new);
             y_smooth = cubicSpline(t, y, t_new);
             z_smooth = cubicSpline(t, z, t_new);
-            yaw_smooth = cubicSpline(t, yaw, t_new);
+            yaw_smooth = cubicSpline(t, yaw, t_new, true);
         }
     
         // Reconstruct the smoothed path
