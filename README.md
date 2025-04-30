@@ -6,7 +6,7 @@ conda deactivate
 ```
 
 <details>
-<summary>Guide to install Isaac Sim v.4.2.0 </summary>
+<summary>Guide to install Isaac Sim 4.2.0 </summary>
 
 This guide is slightly modified from:
 <https://docs.isaacsim.omniverse.nvidia.com/latest/installation/install_workstation.html>
@@ -14,7 +14,7 @@ This guide is slightly modified from:
 ### Install Isaac Sim
 Ensure system requirements as stated by the documentation...
 
-Download Isaac Sim v.4.2.0 from <https://docs.isaacsim.omniverse.nvidia.com/latest/installation/download.html#isaac-sim-latest-release> and place in Downloads
+Download Isaac Sim 4.2.0 from <https://docs.isaacsim.omniverse.nvidia.com/latest/installation/download.html#isaac-sim-latest-release> and place in Downloads
 
 ```
 mkdir ~/isaacsim
