@@ -146,6 +146,7 @@ private:
 
         // Publish the planned path up to the last successful segment
         if (!planned_path.poses.empty()) {
+            planned_path.poses = downsamplePath(planned_path.poses, interpolation_distance_*2); // Downsample the path
             planned_path.poses = smoothPath(planned_path.poses, interpolation_distance_); // Uncomment if smoothing is needed
             
             planned_path.header.stamp = this->now(); // Update the timestamp
@@ -386,6 +387,33 @@ private:
         }
     
         return full_path;
+    }
+
+    std::vector<geometry_msgs::msg::PoseStamped> downsamplePath(
+        const std::vector<geometry_msgs::msg::PoseStamped> &path, double min_distance) {
+        if (path.size() < 2) {
+            return path; // Not enough points to downsample
+        }
+    
+        std::vector<geometry_msgs::msg::PoseStamped> downsampled_path;
+        downsampled_path.push_back(path.front()); // Always include the first point
+    
+        for (size_t i = 1; i < path.size(); ++i) {
+            const auto &last_point = downsampled_path.back().pose.position;
+            const auto &current_point = path[i].pose.position;
+    
+            // Calculate the Euclidean distance between the last added point and the current point
+            double distance = std::sqrt(
+                std::pow(current_point.x - last_point.x, 2) +
+                std::pow(current_point.y - last_point.y, 2) +
+                std::pow(current_point.z - last_point.z, 2));
+    
+            if (distance >= min_distance) {
+                downsampled_path.push_back(path[i]); // Add the point if it's far enough
+            }
+        }
+    
+        return downsampled_path;
     }
     
     std::vector<geometry_msgs::msg::PoseStamped> smoothPath(
