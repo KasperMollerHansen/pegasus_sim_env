@@ -28,7 +28,6 @@ from pegasus.simulator.logic.backends.px4_mavlink_backend import (
 from pegasus.simulator.logic.vehicles.multirotor import Multirotor, MultirotorConfig
 from pegasus.simulator.logic.interface.pegasus_interface import PegasusInterface
 
-from backend.omni_graphs import OmniGraphs
 from backend.sensor import StereoCamera, RTXLidar
 from backend.ros_publishers import ClockPublisher, TfPublisher
 
@@ -41,8 +40,6 @@ class PegasusApp:
     def __init__(self):
         self.working_dir = os.path.dirname(os.path.abspath(__file__))
         self.default_body_children = {"body", "base_link", "Looks"}
-
-        self.omni_graphs = OmniGraphs()
 
         self.topic_prefix = "/isaac"
         self.timeline = omni.timeline.get_timeline_interface()

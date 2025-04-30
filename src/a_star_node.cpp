@@ -146,7 +146,7 @@ private:
 
         // Publish the planned path up to the last successful segment
         if (!planned_path.poses.empty()) {
-            planned_path.poses = downsamplePath(planned_path.poses, interpolation_distance_*2); // Downsample the path
+            planned_path.poses = downsamplePath(planned_path.poses, interpolation_distance_*3); // Downsample the path
             planned_path.poses = smoothPath(planned_path.poses, interpolation_distance_); // Uncomment if smoothing is needed
             
             planned_path.header.stamp = this->now(); // Update the timestamp

@@ -41,7 +41,7 @@ def generate_launch_description():
                 {'max_velocity': 10.0},             # Maximum velocity
                 {'min_velocity': 1.0},              # Minimum velocity
                 {'max_acceleration': 0.5},          # Acceleration
-                {'max_angle_change': math.pi / 18},  # Maximum angle change
+                {'max_angle_change': math.pi / 6},  # Maximum angle change (30 degrees)
             ]
         ),
     ])
