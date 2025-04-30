@@ -38,7 +38,7 @@ alias ISAAC_ENV="conda activate isaac_env && source ~/isaacsim/setup_conda_env.s
 </details>
 
 <details>
-<summary>Guide to install Pegasus Simulator for Isaac Sim v.4.2.0 </summary>
+<summary>Guide to install Pegasus Simulator for Isaac Sim 4.2.0 </summary>
 
 This guide is slightly modified from:
 <https://pegasussimulator.github.io/PegasusSimulator/>
