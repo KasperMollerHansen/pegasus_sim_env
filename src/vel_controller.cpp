@@ -183,6 +183,7 @@ void OffboardControl::process_path(const Path::SharedPtr msg)
     static Eigen::Vector3d previous_published_velocity(0.0, 0.0, 0.0); // Track the previous velocity
     static double previous_velocity = 0.0; // Track the previous speed
     static double dt = 1; // Time difference between updates (can be adjusted dynamically)
+    const double max_angle_change = M_PI / 6.0; // Maximum allowed angular change (e.g., 45 degrees)
 
     // TF2 setup
     geometry_msgs::msg::TransformStamped transform_stamped;
@@ -237,6 +238,32 @@ void OffboardControl::process_path(const Path::SharedPtr msg)
 
         velocity_desired_world = velocity_desired_world / velocity_desired_world.norm() * velocity;
 
+        // Check angular difference between previous and desired velocity
+        if (previous_published_velocity.norm() > 1e-6) { // Ensure the previous velocity is not zero
+            double dot_product = previous_published_velocity.normalized().dot(velocity_desired_world.normalized());
+            double angle_change = std::acos(std::clamp(dot_product, -1.0, 1.0)); // Clamp to avoid numerical issues
+        
+            if (angle_change > max_angle_change) {
+                RCLCPP_WARN(this->get_logger(), "Angular change exceeds threshold. Adjusting velocity direction to max allowable angle.");
+        
+                // Calculate the axis of rotation (cross product of the two vectors)
+                Eigen::Vector3d rotation_axis = previous_published_velocity.normalized().cross(velocity_desired_world.normalized());
+                if (rotation_axis.norm() > 1e-6) { // Ensure the axis is valid
+                    rotation_axis.normalize();
+        
+                    // Create a rotation matrix for the max allowable angle
+                    Eigen::AngleAxisd rotation(max_angle_change, rotation_axis);
+        
+                    // Rotate the previous velocity vector to the max allowable angle
+                    velocity_desired_world = rotation * previous_published_velocity.normalized() * velocity;
+                } else {
+                    // If the rotation axis is invalid (vectors are parallel), keep the previous direction
+                    velocity_desired_world = previous_published_velocity.normalized() * velocity;
+                }
+            }
+        } else {
+            RCLCPP_WARN(this->get_logger(), "Previous velocity is zero. Skipping angular adjustment.");
+        }
         // Calculate acceleration
         Eigen::Vector3d acceleration_desired_world = (velocity_desired_world - previous_published_velocity) / dt;
 
