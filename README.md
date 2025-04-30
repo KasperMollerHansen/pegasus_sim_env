@@ -6,7 +6,7 @@ conda deactivate
 ```
 
 <details>
-<summary>Guide to install Isaac Sim v.4.2.0 </summary>
+<summary>Guide to install Isaac Sim 4.2.0 </summary>
 
 This guide is slightly modified from:
 <https://docs.isaacsim.omniverse.nvidia.com/latest/installation/install_workstation.html>
@@ -14,7 +14,7 @@ This guide is slightly modified from:
 ### Install Isaac Sim
 Ensure system requirements as stated by the documentation...
 
-Download Isaac Sim v.4.2.0 from <https://docs.isaacsim.omniverse.nvidia.com/latest/installation/download.html#isaac-sim-latest-release> and place in Downloads
+Download Isaac Sim 4.2.0 from <https://docs.isaacsim.omniverse.nvidia.com/latest/installation/download.html#isaac-sim-latest-release> and place in Downloads
 
 ```
 mkdir ~/isaacsim
@@ -38,7 +38,7 @@ alias ISAAC_ENV="conda activate isaac_env && source ~/isaacsim/setup_conda_env.s
 </details>
 
 <details>
-<summary>Guide to install Pegasus Simulator for Isaac Sim v.4.2.0 </summary>
+<summary>Guide to install Pegasus Simulator for Isaac Sim 4.2.0 </summary>
 
 This guide is slightly modified from:
 <https://pegasussimulator.github.io/PegasusSimulator/>
@@ -90,7 +90,7 @@ source /opt/ros/humble/setup.bash && echo "source /opt/ros/humble/setup.bash" >>
 python3 -m pip install --upgrade pip
 python3 -m pip install --upgrade setuptools wheel twine check-wheel-contents
 ```
-## The PX4 uses version v2.x.x
+The PX4 uses version v2.x.x
 ```
 git clone -b v2.4.3 https://github.com/eProsima/Micro-XRCE-DDS-Agent.git
 cd Micro-XRCE-DDS-Agent
