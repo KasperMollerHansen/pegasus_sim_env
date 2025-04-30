@@ -31,12 +31,14 @@ public:
         this->declare_parameter<double>("max_velocity", 10.0);
         this->declare_parameter<double>("min_velocity", 1.0);
         this->declare_parameter<double>("max_acceleration", 0.5);
+        this->declare_parameter<double>("max_angle_change", M_PI / 6.0); // 30 degrees
 
         interpolation_distance_ = this->get_parameter("interpolation_distance").as_double();
         frame_id_ = this->get_parameter("frame_id").as_string();
         max_velocity_ = this->get_parameter("max_velocity").as_double();
         min_velocity_ = this->get_parameter("min_velocity").as_double();
         max_acceleration_ = this->get_parameter("max_acceleration").as_double();
+        max_angle_change_ = this->get_parameter("max_angle_change").as_double();
 
         // Publishers
         offboard_control_mode_publisher_ = this->create_publisher<OffboardControlMode>("/fmu/in/offboard_control_mode", 10);
@@ -90,6 +92,7 @@ private:
     double max_velocity_;
     double min_velocity_;
     double max_acceleration_;
+    double max_angle_change_;
 };
 
 /**
@@ -183,7 +186,7 @@ void OffboardControl::process_path(const Path::SharedPtr msg)
     static Eigen::Vector3d previous_published_velocity(0.0, 0.0, 0.0); // Track the previous velocity
     static double previous_velocity = 0.0; // Track the previous speed
     static double dt = 1; // Time difference between updates (can be adjusted dynamically)
-    const double max_angle_change = M_PI / 6.0; // Maximum allowed angular change (e.g., 45 degrees)
+    static double delta_vel = min_velocity_ / 10.0; // Velocity change threshold
 
     // TF2 setup
     geometry_msgs::msg::TransformStamped transform_stamped;
@@ -206,12 +209,13 @@ void OffboardControl::process_path(const Path::SharedPtr msg)
         int straight_line_points = countStraightLinePoints(msg->poses);
         RCLCPP_INFO(this->get_logger(), "Number of points on a straight line: %d", straight_line_points);
         double velocity = min_velocity_ + 0.1 * straight_line_points;
+
         
-        // Clamp the velocity change to a maximum of 0.5
-        if (velocity > previous_velocity + min_velocity_/4.0) {
-            velocity = previous_velocity + min_velocity_/4.0;
-        } else if (velocity < previous_velocity - min_velocity_/4.0) {
-            velocity = previous_velocity - min_velocity_/4.0;
+        // Clamp the velocity change to a
+        if (velocity > previous_velocity + delta_vel) {
+            velocity = previous_velocity + delta_vel;
+        } else if (velocity < previous_velocity - delta_vel) {
+            velocity = previous_velocity - delta_vel;
         }
         if (velocity > max_velocity_) {
             velocity = max_velocity_;
@@ -243,7 +247,7 @@ void OffboardControl::process_path(const Path::SharedPtr msg)
             double dot_product = previous_published_velocity.normalized().dot(velocity_desired_world.normalized());
             double angle_change = std::acos(std::clamp(dot_product, -1.0, 1.0)); // Clamp to avoid numerical issues
         
-            if (angle_change > max_angle_change) {
+            if (angle_change > max_angle_change_) {
                 RCLCPP_WARN(this->get_logger(), "Angular change exceeds threshold. Adjusting velocity direction to max allowable angle.");
         
                 // Calculate the axis of rotation (cross product of the two vectors)
@@ -252,7 +256,7 @@ void OffboardControl::process_path(const Path::SharedPtr msg)
                     rotation_axis.normalize();
         
                     // Create a rotation matrix for the max allowable angle
-                    Eigen::AngleAxisd rotation(max_angle_change, rotation_axis);
+                    Eigen::AngleAxisd rotation(max_angle_change_, rotation_axis);
         
                     // Rotate the previous velocity vector to the max allowable angle
                     velocity_desired_world = rotation * previous_published_velocity.normalized() * velocity;
