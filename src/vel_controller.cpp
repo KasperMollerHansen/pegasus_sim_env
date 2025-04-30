@@ -208,7 +208,7 @@ void OffboardControl::process_path(const Path::SharedPtr msg)
 
         int straight_line_points = countStraightLinePoints(msg->poses);
         RCLCPP_INFO(this->get_logger(), "Number of points on a straight line: %d", straight_line_points);
-        double velocity = min_velocity_ + 0.1 * straight_line_points;
+        double velocity = min_velocity_ + delta_vel * straight_line_points;
 
         
         // Clamp the velocity change to a
