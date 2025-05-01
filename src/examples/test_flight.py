@@ -2,6 +2,7 @@
 
 import rclpy
 import math
+import time
 import numpy as np
 from rclpy.node import Node
 from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy, DurabilityPolicy
@@ -54,7 +55,7 @@ class TestFlight(Node):
         self.waypoints_adjustment = self.create_subscription(
             Path,
             "/planner/waypoints_adjusted",
-            self.adjust_waypints_callback,
+            self.adjust_waypoints_callback,
             qos_profile,
         )
 
@@ -74,8 +75,10 @@ class TestFlight(Node):
 
         # Create a timer to publish control commands
         self.timer = self.create_timer(0.1, self.timer_callback)
+        self.last_update_time = time.time()  # Initialize the last update time
+        self.update_cooldown = 1.0  # Cooldown period in seconds (adjust as needed)
 
-    def adjust_waypints_callback(self, waypoints_adjusted):
+    def adjust_waypoints_callback(self, waypoints_adjusted):
         new_coordinates = []
 
         for pose in waypoints_adjusted.poses[:3]:
@@ -123,6 +126,11 @@ class TestFlight(Node):
 
     def update_coordinates(self) -> None:
         """Check if the vehicle is close to any point in the coordinates_to_vist vector."""
+        current_time = time.time()
+        if current_time - self.last_update_time < self.update_cooldown:
+            # Skip update if cooldown period hasn't passed
+            return
+
         current = np.array([
             self.vehicle_odometry.pose.pose.position.x,
             self.vehicle_odometry.pose.pose.position.y,
@@ -137,6 +145,7 @@ class TestFlight(Node):
             if distance < 0.5:  # Threshold for being "close"
                 self.get_logger().info(f"Reached point {i}: {target}")
                 self.current_checkpoint += 1  # Update checkpoint to the next point
+                self.last_update_time = current_time  # Update the last update time
                 break
 
     def timer_callback(self) -> None:

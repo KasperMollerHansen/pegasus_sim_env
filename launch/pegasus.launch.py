@@ -27,7 +27,7 @@ def generate_launch_description():
             parameters=[
                 {'obstacle_threshold': 50},         # Obstacle threshold, depends on safety distance
                 {"frame_id": "base_link"},          # Map centered at base_link
-                {"interpolation_distance": 2.0},    # Interpolation distance
+                {"interpolation_distance": 3.0},    # Interpolation distance
                 {"costmap_topic": "/local_costmap/costmap"},
                 {"waypoints_topic": "/oscep/waypoints"},
                 {"path_planner_prefix": "/planner"},
@@ -39,7 +39,7 @@ def generate_launch_description():
             name="velocity_controller",
             output="screen",
             parameters=[
-                {"interpolation_distance": 2.0},    # Interpolation distance
+                {"interpolation_distance": 3.0},    # Interpolation distance
                 {"frame_id": "base_link"},          # Map centered at base_link
                 {"max_velocity": 10.0},             # Maximum velocity
                 {"min_velocity": 1.0},              # Minimum velocity

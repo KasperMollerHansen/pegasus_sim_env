@@ -80,7 +80,6 @@ private:
     std::shared_ptr<tf2_ros::Buffer> tf_buffer_;
     std::shared_ptr<tf2_ros::TransformListener> tf_listener_;
     nav_msgs::msg::OccupancyGrid::SharedPtr costmap_;
-    nav_msgs::msg::Path::SharedPtr last_received_waypoints_; // Store the last received trajectory path
     nav_msgs::msg::Path adjusted_waypoints_;
     int obstacle_threshold_;
     std::string frame_id_;
@@ -89,9 +88,9 @@ private:
     void costmapCallback(const nav_msgs::msg::OccupancyGrid::SharedPtr msg) {
         costmap_ = msg;
         RCLCPP_INFO(this->get_logger(), "Received costmap");
-
+    
         // Re-plan and publish the path only when the costmap is updated
-        if (last_received_waypoints_) {
+        if (!adjusted_waypoints_.poses.empty()) {
             planAndPublishPath();
         }
     }
@@ -107,30 +106,23 @@ private:
         }
     
         adjusted_waypoints_.header = msg->header;
-        adjusted_waypoints_.poses.clear(); 
+        adjusted_waypoints_.poses.clear();
     
         for (const auto &pose : msg->poses) {
             auto adjusted_pose = adjustWaypointForCollision(pose, costmap_->info.resolution, 20);
             adjusted_waypoints_.poses.push_back(adjusted_pose);
         }
-
+    
         waypoints_adjusted_pub_->publish(adjusted_waypoints_);
-        // Store the received trajectory path
-        last_received_waypoints_ = msg;
     }
 
-    void planAndPublishPath() {
-        if (!costmap_ || !last_received_waypoints_) {
-            RCLCPP_ERROR(this->get_logger(), "Cannot plan path: costmap or trajectory path is missing");
-            return;
-        }
-
-        // Get the robot's current position in the costmap frame
+    geometry_msgs::msg::PoseStamped getCurrentPosition() {
         geometry_msgs::msg::PoseStamped current_position;
+    
         try {
             geometry_msgs::msg::TransformStamped transform = tf_buffer_->lookupTransform(
                 costmap_->header.frame_id, frame_id_, tf2::TimePointZero);
-
+    
             current_position.pose.position.x = transform.transform.translation.x;
             current_position.pose.position.y = transform.transform.translation.y;
             current_position.pose.position.z = transform.transform.translation.z;
@@ -138,59 +130,59 @@ private:
             current_position.header.frame_id = costmap_->header.frame_id;
         } catch (const tf2::TransformException &ex) {
             RCLCPP_ERROR(this->get_logger(), "Failed to get transform: %s", ex.what());
+            current_position.header.frame_id = ""; // Mark as invalid
+        }
+    
+        return current_position;
+    }
+
+    void planAndPublishPath() {
+        if (!costmap_ || adjusted_waypoints_.poses.empty()) {
+            RCLCPP_ERROR(this->get_logger(), "Cannot plan path: costmap or trajectory path is missing");
             return;
         }
 
+        // Get the robot's current position in the costmap frame
+        geometry_msgs::msg::PoseStamped current_position = getCurrentPosition();
+        if (current_position.header.frame_id.empty()) {
+            RCLCPP_ERROR(this->get_logger(), "Failed to retrieve current position");
+            return;
+        }
         // Initialize the planned path
-        nav_msgs::msg::Path planned_path;
-        planned_path.header.stamp = this->now();
-        planned_path.header.frame_id = costmap_->header.frame_id;
+        nav_msgs::msg::Path init_path;
+        init_path.header.stamp = this->now();
+        init_path.header.frame_id = costmap_->header.frame_id;
 
-        // Plan paths sequentially between points
-        geometry_msgs::msg::PoseStamped start = current_position;
-        for (size_t i = 0; i < last_received_waypoints_->poses.size(); ++i) {
-            const auto &goal = last_received_waypoints_->poses[i];
+        // Add the current position to the path
+        init_path.poses.push_back(current_position);
 
-            // Plan the path from the current start to the goal
-            auto segment_path = planPath(start, goal);
-
-            if (segment_path.empty()) {
-                if (i < 2) {
-                    // Try to replan the path to the next goal
-                    RCLCPP_WARN(this->get_logger(), "No valid path found for segment %zu, trying next goal", i);
-                    continue; // Skip to the next goal
-                }else{
-                    RCLCPP_ERROR(this->get_logger(), "Failed to plan a path for segment %zu", i);
-                    break; // Stop planning further segments
-                }
-            }
-
-            // Concatenate the segment to the planned path
-            planned_path.poses.insert(planned_path.poses.end(), segment_path.begin(), segment_path.end());
-
-            // Update the start for the next segment
-            start = goal;
+        // Add the adjusted waypoints to the path
+        for (const auto &waypoint : adjusted_waypoints_.poses) {
+            init_path.poses.push_back(waypoint);
         }
 
-        // Publish the planned path up to the last successful segment
-        if (!planned_path.poses.empty()) {
+        // Smooth the path and store it in a new Path message
+        nav_msgs::msg::Path smoothed_path;
+        smoothed_path.header.stamp = this->now();
+        smoothed_path.header.frame_id = costmap_->header.frame_id;
+        smoothed_path.poses = smoothPath(init_path.poses, interpolation_distance_);
 
-            raw_path_pub_->publish(planned_path);
+        
 
-            planned_path.poses = downsamplePath(planned_path.poses, 4*interpolation_distance_, adjusted_waypoints_); // Downsample the path
-            down_sampled_path_pub_->publish(planned_path);
 
-            planned_path.poses = smoothPath(planned_path.poses, 2*interpolation_distance_); // Uncomment if smoothing is needed
-            
-            planned_path.header.stamp = this->now(); // Update the timestamp
-            planned_path.header.frame_id = costmap_->header.frame_id; // Set the frame ID
-            // Publish the planned path
-            smoothed_path_pub_->publish(planned_path);
-            RCLCPP_INFO(this->get_logger(), "Published planned path with %zu poses", planned_path.poses.size());
-        } else {
-            RCLCPP_WARN(this->get_logger(), "No valid path segments to publish");
-        }
+
+
+
+
+
+
+        smoothed_path.header.stamp = this->now(); // Update the timestamp
+        smoothed_path.header.frame_id = costmap_->header.frame_id; // Set the frame ID
+        // Publish the planned path
+        smoothed_path_pub_->publish(smoothed_path);
     }
+
+
 
     // Function to interpolate yaw between two poses
     tf2::Quaternion interpolateYaw(
@@ -628,9 +620,10 @@ private:
     
         // Reconstruct the smoothed path
         std::vector<geometry_msgs::msg::PoseStamped> smoothed_path;
-        const double position_tolerance = interpolation_distance_;
-    
-        for (size_t i = 0; i < t_new.size(); ++i) {
+
+        smoothed_path.push_back(path.front());
+
+        for (size_t i = 1; i < t_new.size(); ++i) {
             geometry_msgs::msg::PoseStamped pose;
             pose.header = path.front().header; // Use the same header
             pose.pose.position.x = x_smooth[i];
@@ -645,10 +638,11 @@ private:
             // Check if the current pose matches an adjusted waypoint
             auto adjusted_it = std::find_if(
                 adjusted_waypoints_.poses.begin(), adjusted_waypoints_.poses.end(),
-                [&pose, position_tolerance](const geometry_msgs::msg::PoseStamped &adjusted_pose) {
-                    return std::abs(pose.pose.position.x - adjusted_pose.pose.position.x) <= position_tolerance &&
-                           std::abs(pose.pose.position.y - adjusted_pose.pose.position.y) <= position_tolerance &&
-                           std::abs(pose.pose.position.z - adjusted_pose.pose.position.z) <= position_tolerance;
+                [&pose, interpolation_distance](const geometry_msgs::msg::PoseStamped &adjusted_pose) {
+                    return std::sqrt(
+                        std::pow(pose.pose.position.x - adjusted_pose.pose.position.x, 2) +
+                        std::pow(pose.pose.position.y - adjusted_pose.pose.position.y, 2) +
+                        std::pow(pose.pose.position.z - adjusted_pose.pose.position.z, 2)) <= interpolation_distance;
                 });
     
             if (adjusted_it != adjusted_waypoints_.poses.end()) {
@@ -659,7 +653,6 @@ private:
                 smoothed_path.push_back(pose);
             }
         }
-    
         return smoothed_path;
     }
 };
