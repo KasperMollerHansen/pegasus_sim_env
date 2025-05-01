@@ -520,6 +520,7 @@ private:
         return final_path;
     }
     
+
     std::vector<geometry_msgs::msg::PoseStamped> smoothPath(
         const std::vector<geometry_msgs::msg::PoseStamped> &path, double interpolation_distance) {
         if (path.size() < 2) {
@@ -539,13 +540,6 @@ private:
             tf2::fromMsg(pose.pose.orientation, quat);
             yaw.push_back(tf2::getYaw(quat));
         }
-    
-        // Detect if the path is predominantly vertical
-        double x_range = *std::max_element(x.begin(), x.end()) - *std::min_element(x.begin(), x.end());
-        double y_range = *std::max_element(y.begin(), y.end()) - *std::min_element(y.begin(), y.end());
-        double z_range = *std::max_element(z.begin(), z.end()) - *std::min_element(z.begin(), z.end());
-    
-        bool is_vertical = (z_range > x_range * 2.0) && (z_range > y_range * 2.0);
     
         // Generate a parameter t for interpolation (e.g., cumulative distance)
         std::vector<double> t(x.size(), 0.0);
@@ -568,6 +562,7 @@ private:
             t_new[i] = i * interpolation_distance;
         }
     
+        // Interpolate x, y, z, and yaw using cubic splines
         auto cubicSpline = [](const std::vector<double> &t, const std::vector<double> &values, const std::vector<double> &t_new, bool is_yaw = false) {
             std::vector<double> result(t_new.size());
             for (size_t i = 0; i < t_new.size(); ++i) {
@@ -600,30 +595,14 @@ private:
             return result;
         };
     
-        std::vector<double> x_smooth, y_smooth, z_smooth, yaw_smooth;
-    
-        if (is_vertical) {
-            // For predominantly vertical paths, only interpolate z and yaw
-            z_smooth = cubicSpline(t, z, t_new);
-            yaw_smooth = cubicSpline(t, yaw, t_new, true);
-    
-            // Use the original x and y values for all points
-            x_smooth.assign(num_points, x.front());
-            y_smooth.assign(num_points, y.front());
-        } else {
-            // For general paths, interpolate all dimensions
-            x_smooth = cubicSpline(t, x, t_new);
-            y_smooth = cubicSpline(t, y, t_new);
-            z_smooth = cubicSpline(t, z, t_new);
-            yaw_smooth = cubicSpline(t, yaw, t_new, true);
-        }
+        std::vector<double> x_smooth = cubicSpline(t, x, t_new);
+        std::vector<double> y_smooth = cubicSpline(t, y, t_new);
+        std::vector<double> z_smooth = cubicSpline(t, z, t_new);
+        std::vector<double> yaw_smooth = cubicSpline(t, yaw, t_new, true);
     
         // Reconstruct the smoothed path
         std::vector<geometry_msgs::msg::PoseStamped> smoothed_path;
-
-        smoothed_path.push_back(path.front());
-
-        for (size_t i = 1; i < t_new.size(); ++i) {
+        for (size_t i = 0; i < t_new.size(); ++i) {
             geometry_msgs::msg::PoseStamped pose;
             pose.header = path.front().header; // Use the same header
             pose.pose.position.x = x_smooth[i];
@@ -635,24 +614,9 @@ private:
             quaternion.setRPY(0, 0, yaw_smooth[i]);
             pose.pose.orientation = tf2::toMsg(quaternion);
     
-            // Check if the current pose matches an adjusted waypoint
-            auto adjusted_it = std::find_if(
-                adjusted_waypoints_.poses.begin(), adjusted_waypoints_.poses.end(),
-                [&pose, interpolation_distance](const geometry_msgs::msg::PoseStamped &adjusted_pose) {
-                    return std::sqrt(
-                        std::pow(pose.pose.position.x - adjusted_pose.pose.position.x, 2) +
-                        std::pow(pose.pose.position.y - adjusted_pose.pose.position.y, 2) +
-                        std::pow(pose.pose.position.z - adjusted_pose.pose.position.z, 2)) <= interpolation_distance;
-                });
-    
-            if (adjusted_it != adjusted_waypoints_.poses.end()) {
-                // Replace with the adjusted waypoint
-                smoothed_path.push_back(*adjusted_it);
-            } else {
-                // Add the interpolated pose
-                smoothed_path.push_back(pose);
-            }
+            smoothed_path.push_back(pose);
         }
+    
         return smoothed_path;
     }
 };
