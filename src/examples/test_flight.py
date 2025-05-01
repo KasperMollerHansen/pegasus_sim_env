@@ -69,7 +69,7 @@ class TestFlight(Node):
         self.center = [200, 0]  # Center of the circle
         self.yaw = 0.0
         self.number_of_waypoints = 5
-        self.coordinates_to_vist = self.coordinates
+        self.coordinates_to_vist = self.coordinates.copy()
         
 
         # Create a timer to publish control commands
@@ -78,7 +78,7 @@ class TestFlight(Node):
     def adjust_waypints_callback(self, waypoints_adjusted):
         new_coordinates = []
 
-        for pose in waypoints_adjusted.poses:
+        for pose in waypoints_adjusted.poses[:3]:
             x = pose.pose.position.x
             y = pose.pose.position.y
             z = pose.pose.position.z
@@ -122,21 +122,22 @@ class TestFlight(Node):
         self.get_logger().info(f"Publishing path with next 3 setpoints.")
 
     def update_coordinates(self) -> None:
-        target = self.coordinates_to_vist[0]
-        next_target = self.coordinates[(self.current_checkpoint + 1) % len(self.coordinates)]
-        current = [
-        self.vehicle_odometry.pose.pose.position.x,
-        self.vehicle_odometry.pose.pose.position.y,
-        self.vehicle_odometry.pose.pose.position.z,
-        ]
-        target = np.array(target)
-        current = np.array(current)
-        self.get_logger().info(str((np.linalg.norm(current - target))))
-        if np.linalg.norm(current - target) < 0.5:
-            self.current_checkpoint += 1
-        elif np.linalg.norm(current - next_target) < 0.5:
-            self.current_checkpoint += 1
+        """Check if the vehicle is close to any point in the coordinates_to_vist vector."""
+        current = np.array([
+            self.vehicle_odometry.pose.pose.position.x,
+            self.vehicle_odometry.pose.pose.position.y,
+            self.vehicle_odometry.pose.pose.position.z,
+        ])
 
+        for i, target in enumerate(self.coordinates_to_vist):
+            target = np.array(target)
+            distance = np.linalg.norm(current - target)
+            self.get_logger().info(f"Distance to point {i}: {distance}")
+
+            if distance < 0.5:  # Threshold for being "close"
+                self.get_logger().info(f"Reached point {i}: {target}")
+                self.current_checkpoint += 1  # Update checkpoint to the next point
+                break
 
     def timer_callback(self) -> None:
         self.publish_path()
