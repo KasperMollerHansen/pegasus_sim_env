@@ -15,7 +15,7 @@ def generate_launch_description():
                 {"local_map_size": 400.0},          # Local map size (400 m x 400 m)
                 {"global_map_size": 1600.0},        # Global map size (1600 m x 1600 m)
                 {"frame_id": "base_link"},          # Map centered at base_link
-                {"safety_distance_min": 10.0},       # Minimum safety distance
+                {"safety_distance_min": 8.0},       # Minimum safety distance
                 {"safety_distance_max": 12.0},      # Maximum safety distance    
             ]
         ),
@@ -25,6 +25,7 @@ def generate_launch_description():
             name="planner",
             output="screen",
             parameters=[
+                {'obstacle_threshold': 50},         # Obstacle threshold, depends on safety distance
                 {"frame_id": "base_link"},          # Map centered at base_link
                 {"interpolation_distance": 2.0},    # Interpolation distance
                 {"costmap_topic": "/local_costmap/costmap"},

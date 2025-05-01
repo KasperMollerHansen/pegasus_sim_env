@@ -51,6 +51,13 @@ class TestFlight(Node):
             odometry_qos_profile,
         )
 
+        self.waypoints_adjustment = self.create_subscription(
+            Path,
+            "/planner/waypoints_adjusted",
+            self.adjust_waypints_callback,
+            qos_profile,
+        )
+
         self.vehicle_odometry = Odometry()
 
         # Initialize variables
@@ -61,9 +68,23 @@ class TestFlight(Node):
         self.coordinates = generate_coordinates(center_x=200, center_y=0, radius=30, num_points=8, height=120)
         self.center = [200, 0]  # Center of the circle
         self.yaw = 0.0
+        self.number_of_waypoints = 5
+        self.coordinates_to_vist = self.coordinates
+        
 
         # Create a timer to publish control commands
         self.timer = self.create_timer(0.1, self.timer_callback)
+
+    def adjust_waypints_callback(self, waypoints_adjusted):
+        new_coordinates = []
+
+        for pose in waypoints_adjusted.poses:
+            x = pose.pose.position.x
+            y = pose.pose.position.y
+            z = pose.pose.position.z
+            new_coordinates.append([x, y, z])
+        
+        self.coordinates_to_vist = new_coordinates
 
     def vehicle_odometry_callback(self, vehicle_odometry):
         """Callback function for vehicle_odometry topic subscriber."""
@@ -75,7 +96,7 @@ class TestFlight(Node):
         path_msg.header.stamp = self.get_clock().now().to_msg()
         path_msg.header.frame_id = "odom"
 
-        for i in range(5):
+        for i in range(self.number_of_waypoints):
             checkpoint_index = (self.current_checkpoint + i) % len(self.coordinates)
             position = self.coordinates[checkpoint_index]
             pose = PoseStamped()
@@ -101,7 +122,7 @@ class TestFlight(Node):
         self.get_logger().info(f"Publishing path with next 3 setpoints.")
 
     def update_coordinates(self) -> None:
-        target = self.coordinates[self.current_checkpoint]
+        target = self.coordinates_to_vist[0]
         next_target = self.coordinates[(self.current_checkpoint + 1) % len(self.coordinates)]
         current = [
         self.vehicle_odometry.pose.pose.position.x,

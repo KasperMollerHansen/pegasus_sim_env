@@ -29,12 +29,14 @@ class PathPlanner : public rclcpp::Node {
 public:
     PathPlanner() : Node("planner") {
         // Declare and retrieve parameters
+        this->declare_parameter<int>("obstacle_threshold", 50);
         this->declare_parameter<std::string>("frame_id", "base_link");
         this->declare_parameter<double>("interpolation_distance", 2.0);
         this->declare_parameter<std::string>("costmap_topic", "/local_costmap/costmap");
         this->declare_parameter<std::string>("waypoints_topic", "/oscep/waypoints");
         this->declare_parameter<std::string>("path_planner_prefix", "/planner");
 
+        obstacle_threshold_ = this->get_parameter("obstacle_threshold").as_int();
         frame_id_ = this->get_parameter("frame_id").as_string();
         interpolation_distance_ = this->get_parameter("interpolation_distance").as_double();
         std::string costmap_topic = this->get_parameter("costmap_topic").as_string();
@@ -80,6 +82,7 @@ private:
     nav_msgs::msg::OccupancyGrid::SharedPtr costmap_;
     nav_msgs::msg::Path::SharedPtr last_received_waypoints_; // Store the last received trajectory path
     nav_msgs::msg::Path adjusted_waypoints_;
+    int obstacle_threshold_;
     std::string frame_id_;
     double interpolation_distance_;
 
@@ -106,29 +109,12 @@ private:
         adjusted_waypoints_.header = msg->header;
         adjusted_waypoints_.poses.clear(); 
     
-        bool differs = false;
         for (const auto &pose : msg->poses) {
             auto adjusted_pose = adjustWaypointForCollision(pose, costmap_->info.resolution, 20);
             adjusted_waypoints_.poses.push_back(adjusted_pose);
-    
-            // Compare the adjusted pose with the received pose
-            if (adjusted_pose.pose.position.x != pose.pose.position.x ||
-                adjusted_pose.pose.position.y != pose.pose.position.y ||
-                adjusted_pose.pose.position.z != pose.pose.position.z ||
-                adjusted_pose.pose.orientation.x != pose.pose.orientation.x ||
-                adjusted_pose.pose.orientation.y != pose.pose.orientation.y ||
-                adjusted_pose.pose.orientation.z != pose.pose.orientation.z ||
-                adjusted_pose.pose.orientation.w != pose.pose.orientation.w) {
-                differs = true;
-            }
         }
-    
-        // Publish the adjusted path if it differs from the received path
-        if (differs) {
-            waypoints_adjusted_pub_->publish(adjusted_waypoints_);
-            RCLCPP_INFO(this->get_logger(), "Published adjusted waypoints");
-        }
-    
+
+        waypoints_adjusted_pub_->publish(adjusted_waypoints_);
         // Store the received trajectory path
         last_received_waypoints_ = msg;
     }
@@ -258,7 +244,7 @@ private:
                 int index = y_index * costmap_->info.width + x_index;
 
                 // Check if the waypoint is in a collision-free zone
-                if (costmap_->data[index] <= 50) { // 90 is the threshold for collision
+                if (costmap_->data[index] <= obstacle_threshold_) { // 90 is the threshold for collision
                     return adjusted_waypoint; // Collision-free waypoint found
                 }
             }          
@@ -376,7 +362,7 @@ private:
                     }
     
                     int index = toIndex(next_x, next_y);
-                    if (costmap_->data[index] >= 50) {
+                    if (costmap_->data[index] > obstacle_threshold_) {
                         continue; // Skip this cell as it is an obstacle
                     }
     
@@ -450,7 +436,7 @@ private:
         if (path.size() < 2) {
             return path; // Not enough points to downsample
         }
-
+    
         std::vector<geometry_msgs::msg::PoseStamped> downsampled_path;
         downsampled_path.push_back(path.front()); // Always include the first point
     
@@ -466,7 +452,12 @@ private:
                 std::pow(current_point.z - last_point.z, 2));
     
             if (distance >= min_distance) {
-                downsampled_path.push_back(path[i]); // Add the point if it's far enough
+                // Prevent adding duplicate points
+                if (downsampled_path.back().pose.position.x != path[i].pose.position.x ||
+                    downsampled_path.back().pose.position.y != path[i].pose.position.y ||
+                    downsampled_path.back().pose.position.z != path[i].pose.position.z) {
+                    downsampled_path.push_back(path[i]);
+                }
             }
         }
     
@@ -477,22 +468,21 @@ private:
         std::vector<geometry_msgs::msg::PoseStamped> filtered_path;
         for (size_t i = 0; i < downsampled_path.size(); ++i) {
             const auto &point = downsampled_path[i];
-            
+    
             // Always keep the first point
             if (i == 0) {
                 filtered_path.push_back(point);
                 continue;
             }
-
-            bool is_close_to_adjusted = false;
     
+            bool is_close_to_adjusted = false;
             for (const auto &adjusted_point : adjusted_waypoints.poses) {
                 double distance_to_adjusted = std::sqrt(
                     std::pow(point.pose.position.x - adjusted_point.pose.position.x, 2) +
                     std::pow(point.pose.position.y - adjusted_point.pose.position.y, 2) +
                     std::pow(point.pose.position.z - adjusted_point.pose.position.z, 2));
     
-                if (distance_to_adjusted <= min_distance/2) {
+                if (distance_to_adjusted <= min_distance / 2) {
                     is_close_to_adjusted = true;
                     break;
                 }
@@ -507,7 +497,9 @@ private:
         std::vector<geometry_msgs::msg::PoseStamped> final_path;
         auto adjusted_it = adjusted_waypoints.poses.begin();
     
-        for (const auto &original_pose : path) {
+        for (size_t i = 1; i < path.size(); ++i) { // Start from the second point
+            const auto &original_pose = path[i];
+    
             // Check if the current original pose matches an adjusted waypoint within tolerance
             if (adjusted_it != adjusted_waypoints.poses.end() &&
                 std::abs(original_pose.pose.position.x - adjusted_it->pose.position.x) <= position_tolerance &&
