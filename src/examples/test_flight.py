@@ -5,9 +5,10 @@ import math
 import numpy as np
 from rclpy.node import Node
 from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy, DurabilityPolicy
-from px4_msgs.msg import VehicleOdometry, VehicleStatus
+from px4_msgs.msg import VehicleStatus
 from nav_msgs.msg import Path
 from geometry_msgs.msg import PoseStamped
+from nav_msgs.msg import Odometry
 from scipy.spatial.transform import Rotation as R
 from tf2_ros.buffer import Buffer
 from tf2_ros.transform_listener import TransformListener
@@ -44,13 +45,13 @@ class TestFlight(Node):
         self.tf_listener = TransformListener(self.tf_buffer, self)
 
         self.vehicle_odometry_subscription = self.create_subscription(
-            VehicleOdometry,
-            "/fmu/out/vehicle_odometry",
+            Odometry,  # Update the message type to nav_msgs.msg.Odometry
+            "/isaac/odom",  # Update the topic name
             self.vehicle_odometry_callback,
             odometry_qos_profile,
         )
 
-        self.vehicle_odometry = VehicleOdometry()
+        self.vehicle_odometry = Odometry()
 
         # Initialize variables
         self.offboard_setpoint_counter = 0
@@ -74,7 +75,7 @@ class TestFlight(Node):
         path_msg.header.stamp = self.get_clock().now().to_msg()
         path_msg.header.frame_id = "odom"
 
-        for i in range(3):
+        for i in range(5):
             checkpoint_index = (self.current_checkpoint + i) % len(self.coordinates)
             position = self.coordinates[checkpoint_index]
             pose = PoseStamped()
@@ -102,19 +103,19 @@ class TestFlight(Node):
     def update_coordinates(self) -> None:
         target = self.coordinates[self.current_checkpoint]
         next_target = self.coordinates[(self.current_checkpoint + 1) % len(self.coordinates)]
-        current = self.vehicle_odometry.position
-        current = self.transform_position(current)
+        current = [
+        self.vehicle_odometry.pose.pose.position.x,
+        self.vehicle_odometry.pose.pose.position.y,
+        self.vehicle_odometry.pose.pose.position.z,
+        ]
         target = np.array(target)
         current = np.array(current)
-        if np.linalg.norm(current - target) < 2.0:
+        self.get_logger().info(str((np.linalg.norm(current - target))))
+        if np.linalg.norm(current - target) < 0.5:
             self.current_checkpoint += 1
-        elif np.linalg.norm(current - next_target) < 2.0:
+        elif np.linalg.norm(current - next_target) < 0.5:
             self.current_checkpoint += 1
 
-    @staticmethod
-    def transform_position(position: list):
-        x, y, z = position
-        return [y, x, -z]
 
     def timer_callback(self) -> None:
         self.publish_path()
