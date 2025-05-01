@@ -602,7 +602,10 @@ private:
     
         // Reconstruct the smoothed path
         std::vector<geometry_msgs::msg::PoseStamped> smoothed_path;
-        for (size_t i = 0; i < t_new.size(); ++i) {
+
+        smoothed_path.push_back(path.front());
+
+        for (size_t i = 1; i < t_new.size(); ++i) {
             geometry_msgs::msg::PoseStamped pose;
             pose.header = path.front().header; // Use the same header
             pose.pose.position.x = x_smooth[i];
@@ -614,9 +617,24 @@ private:
             quaternion.setRPY(0, 0, yaw_smooth[i]);
             pose.pose.orientation = tf2::toMsg(quaternion);
     
-            smoothed_path.push_back(pose);
-        }
+            // Check if the current pose matches an adjusted waypoint
+            auto adjusted_it = std::find_if(
+                adjusted_waypoints_.poses.begin(), adjusted_waypoints_.poses.end(),
+                [&pose, interpolation_distance](const geometry_msgs::msg::PoseStamped &adjusted_pose) {
+                    return std::sqrt(
+                        std::pow(pose.pose.position.x - adjusted_pose.pose.position.x, 2) +
+                        std::pow(pose.pose.position.y - adjusted_pose.pose.position.y, 2) +
+                        std::pow(pose.pose.position.z - adjusted_pose.pose.position.z, 2)) <= interpolation_distance;
+                });
     
+            if (adjusted_it != adjusted_waypoints_.poses.end()) {
+                // Replace with the adjusted waypoint
+                smoothed_path.push_back(*adjusted_it);
+            } else {
+                // Add the interpolated pose
+                smoothed_path.push_back(pose);
+            }
+        }
         return smoothed_path;
     }
 };
