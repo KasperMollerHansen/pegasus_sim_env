@@ -69,9 +69,9 @@ ament_target_dependencies(cost_map_node
   pcl_ros
 )
 
-# Add executable for src/a_star_node.cpp
-add_executable(a_star_node src/a_star_node.cpp)
-ament_target_dependencies(a_star_node
+# Add executable for src/planner_node.cpp
+add_executable(planner_node src/planner_node.cpp)
+ament_target_dependencies(planner_node
   rclcpp
   nav_msgs
   px4_msgs
@@ -94,7 +94,7 @@ ament_target_dependencies(vel_controller
 install(TARGETS 
   setpoints_node
   cost_map_node
-  a_star_node
+  planner_node
   vel_controller
   DESTINATION lib/${PROJECT_NAME}
 )
