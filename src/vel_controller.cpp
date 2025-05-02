@@ -32,6 +32,7 @@ public:
         this->declare_parameter<double>("min_velocity", 1.0);
         this->declare_parameter<double>("max_acceleration", 0.5);
         this->declare_parameter<double>("max_angle_change", M_PI / 6.0); // 30 degrees
+        this->declare_parameter<std::string>("path_topic", "/planner/smoothed_path");
 
         interpolation_distance_ = this->get_parameter("interpolation_distance").as_double();
         frame_id_ = this->get_parameter("frame_id").as_string();
@@ -39,6 +40,7 @@ public:
         min_velocity_ = this->get_parameter("min_velocity").as_double();
         max_acceleration_ = this->get_parameter("max_acceleration").as_double();
         max_angle_change_ = this->get_parameter("max_angle_change").as_double();
+        std::string path_topic = this->get_parameter("path_topic").as_string();
 
         // Publishers
         offboard_control_mode_publisher_ = this->create_publisher<OffboardControlMode>("/fmu/in/offboard_control_mode", 10);
@@ -67,7 +69,7 @@ public:
 
         // Subscribe to the Path topic
         path_subscriber_ = this->create_subscription<Path>(
-            "/planned_path", qos_profile, [this](const Path::SharedPtr msg) {
+            path_topic, qos_profile, [this](const Path::SharedPtr msg) {
                 process_path(msg);
             });
     }
@@ -186,7 +188,7 @@ void OffboardControl::process_path(const Path::SharedPtr msg)
     static Eigen::Vector3d previous_published_velocity(0.0, 0.0, 0.0); // Track the previous velocity
     static double previous_velocity = 0.0; // Track the previous speed
     static double dt = 1; // Time difference between updates (can be adjusted dynamically)
-    static double delta_vel = min_velocity_ / 10.0; // Velocity change threshold
+    static double delta_vel = min_velocity_ / 20.0; // Velocity change threshold
 
     // TF2 setup
     geometry_msgs::msg::TransformStamped transform_stamped;
@@ -208,7 +210,7 @@ void OffboardControl::process_path(const Path::SharedPtr msg)
 
         int straight_line_points = countStraightLinePoints(msg->poses);
         RCLCPP_INFO(this->get_logger(), "Number of points on a straight line: %d", straight_line_points);
-        double velocity = min_velocity_ + delta_vel * straight_line_points;
+        double velocity = min_velocity_ + 2*delta_vel * straight_line_points;
 
         
         // Clamp the velocity change to a
@@ -234,7 +236,7 @@ void OffboardControl::process_path(const Path::SharedPtr msg)
         
         Eigen::Vector3d velocity_desired_world; // Declare the variable before the if-else block
 
-        if ((pos_tf - pos0).norm() > interpolation_distance_) {
+        if ((pos_tf - pos0).norm() > interpolation_distance_/2.0) {
             velocity_desired_world = (pos0 - pos_tf) / dt; // Move to pose0 if pose0 diverges from tf
         } else {
             velocity_desired_world = (pos1 - pos_tf) / dt; // Move to next pose

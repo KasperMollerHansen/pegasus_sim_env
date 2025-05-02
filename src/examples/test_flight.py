@@ -2,12 +2,14 @@
 
 import rclpy
 import math
+import time
 import numpy as np
 from rclpy.node import Node
 from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy, DurabilityPolicy
-from px4_msgs.msg import VehicleOdometry, VehicleStatus
+from px4_msgs.msg import VehicleStatus
 from nav_msgs.msg import Path
 from geometry_msgs.msg import PoseStamped
+from nav_msgs.msg import Odometry
 from scipy.spatial.transform import Rotation as R
 from tf2_ros.buffer import Buffer
 from tf2_ros.transform_listener import TransformListener
@@ -29,7 +31,7 @@ class TestFlight(Node):
 
         # Path publisher
         self.path_publisher = self.create_publisher(
-            Path, "/in/trajectory_path", qos_profile
+            Path, "/oscep/waypoints", qos_profile
         )
 
         odometry_qos_profile = QoSProfile(
@@ -44,13 +46,20 @@ class TestFlight(Node):
         self.tf_listener = TransformListener(self.tf_buffer, self)
 
         self.vehicle_odometry_subscription = self.create_subscription(
-            VehicleOdometry,
-            "/fmu/out/vehicle_odometry",
+            Odometry,  # Update the message type to nav_msgs.msg.Odometry
+            "/isaac/odom",  # Update the topic name
             self.vehicle_odometry_callback,
             odometry_qos_profile,
         )
 
-        self.vehicle_odometry = VehicleOdometry()
+        self.waypoints_adjustment = self.create_subscription(
+            Path,
+            "/planner/waypoints_adjusted",
+            self.adjust_waypoints_callback,
+            qos_profile,
+        )
+
+        self.vehicle_odometry = Odometry()
 
         # Initialize variables
         self.offboard_setpoint_counter = 0
@@ -60,9 +69,25 @@ class TestFlight(Node):
         self.coordinates = generate_coordinates(center_x=200, center_y=0, radius=30, num_points=8, height=120)
         self.center = [200, 0]  # Center of the circle
         self.yaw = 0.0
+        self.number_of_waypoints = 5
+        self.coordinates_to_vist = self.coordinates.copy()
+        
 
         # Create a timer to publish control commands
         self.timer = self.create_timer(0.1, self.timer_callback)
+        self.last_update_time = time.time()  # Initialize the last update time
+        self.update_cooldown = 1.0  # Cooldown period in seconds (adjust as needed)
+
+    def adjust_waypoints_callback(self, waypoints_adjusted):
+        new_coordinates = []
+
+        for pose in waypoints_adjusted.poses:
+            x = pose.pose.position.x
+            y = pose.pose.position.y
+            z = pose.pose.position.z
+            new_coordinates.append([x, y, z])
+        
+        self.coordinates_to_vist = new_coordinates
 
     def vehicle_odometry_callback(self, vehicle_odometry):
         """Callback function for vehicle_odometry topic subscriber."""
@@ -74,7 +99,7 @@ class TestFlight(Node):
         path_msg.header.stamp = self.get_clock().now().to_msg()
         path_msg.header.frame_id = "odom"
 
-        for i in range(3):
+        for i in range(self.number_of_waypoints):
             checkpoint_index = (self.current_checkpoint + i) % len(self.coordinates)
             position = self.coordinates[checkpoint_index]
             pose = PoseStamped()
@@ -100,21 +125,28 @@ class TestFlight(Node):
         self.get_logger().info(f"Publishing path with next 3 setpoints.")
 
     def update_coordinates(self) -> None:
-        target = self.coordinates[self.current_checkpoint]
-        next_target = self.coordinates[(self.current_checkpoint + 1) % len(self.coordinates)]
-        current = self.vehicle_odometry.position
-        current = self.transform_position(current)
-        target = np.array(target)
-        current = np.array(current)
-        if np.linalg.norm(current - target) < 2.0:
-            self.current_checkpoint += 1
-        elif np.linalg.norm(current - next_target) < 2.0:
-            self.current_checkpoint += 1
+        """Check if the vehicle is close to any point in the coordinates_to_vist vector."""
+        current_time = time.time()
+        if current_time - self.last_update_time < self.update_cooldown:
+            # Skip update if cooldown period hasn't passed
+            return
 
-    @staticmethod
-    def transform_position(position: list):
-        x, y, z = position
-        return [y, x, -z]
+        current = np.array([
+            self.vehicle_odometry.pose.pose.position.x,
+            self.vehicle_odometry.pose.pose.position.y,
+            self.vehicle_odometry.pose.pose.position.z,
+        ])
+
+        for i, target in enumerate(self.coordinates_to_vist):
+            target = np.array(target)
+            distance = np.linalg.norm(current - target)
+            self.get_logger().info(f"Distance to point {i}: {distance}")
+
+            if distance < 0.5:  # Threshold for being "close"
+                self.get_logger().info(f"Reached point {i}: {target}")
+                self.current_checkpoint += i+1  # Update checkpoint to the next point
+                self.last_update_time = current_time  # Update the last update time
+                break
 
     def timer_callback(self) -> None:
         self.publish_path()
