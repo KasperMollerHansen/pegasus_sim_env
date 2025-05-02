@@ -162,7 +162,9 @@ private:
         tf2::Quaternion quat;
         tf2::fromMsg(adjusted_waypoint.pose.orientation, quat);
         double yaw = tf2::getYaw(quat);
-    
+        
+        bool is_valid = false;
+        // Check if the waypoint is within bounds
         for (int attempt = 0; attempt < max_attempts; ++attempt) {
             // Convert waypoint position to costmap indices
             int x_index = static_cast<int>((adjusted_waypoint.pose.position.x - costmap_->info.origin.position.x) / resolution);
@@ -175,14 +177,20 @@ private:
     
                 // Check if the waypoint is in a collision-free zone
                 if (costmap_->data[index] <= obstacle_threshold_) {
-                    return {adjusted_waypoint, was_adjusted}; // No adjustment needed
+                    if (is_valid) {
+                        return {adjusted_waypoint, was_adjusted};
+                    }else{
+                        is_valid = true; // Mark as valid
+                    }
+                } else {
+                    is_valid = false; // Mark as invalid
+                    was_adjusted = true; // Mark as adjusted
                 }
             }
     
             // Move the waypoint in the negative yaw direction by 0.5 meters
             adjusted_waypoint.pose.position.x -= 0.5 * std::cos(yaw);
             adjusted_waypoint.pose.position.y -= 0.5 * std::sin(yaw);
-            was_adjusted = true; // Mark as adjusted
         }
     
         // If no collision-free zone is found, return an invalid waypoint

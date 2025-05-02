@@ -66,8 +66,8 @@ class TestFlight(Node):
         self.vehicle_status = VehicleStatus()
         self.takeoff_height = -5.0
         self.current_checkpoint = 0
-        self.coordinates = generate_coordinates(center_x=50, center_y=0, radius=20, num_points=16, height=120)
-        self.center = [50, 0]  # Center of the circle
+        self.coordinates = generate_coordinates(center_x=75, center_y=0, radius=20, num_points=16, height=120)
+        self.center = [75, 0]  # Center of the circle
         self.yaw = 0.0
         self.number_of_waypoints = 8
         self.coordinates_to_vist = self.coordinates.copy()
