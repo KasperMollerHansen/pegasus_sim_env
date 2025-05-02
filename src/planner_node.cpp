@@ -110,9 +110,14 @@ private:
     
         for (const auto &pose : msg->poses) {
             auto [adjusted_pose, _] = adjustWaypointForCollision(pose, costmap_->info.resolution, 20);
-            adjusted_waypoints_.poses.push_back(adjusted_pose);
+            
+            // Only add valid points to the adjusted waypoints
+            if (!adjusted_pose.header.frame_id.empty()) {
+                adjusted_waypoints_.poses.push_back(adjusted_pose);
+            } else {
+                RCLCPP_WARN(this->get_logger(), "Invalid waypoint detected and skipped");
+            }
         }
-    
         waypoints_adjusted_pub_->publish(adjusted_waypoints_);
     }
 
@@ -317,203 +322,108 @@ private:
             return waypoints; // Return the waypoints if all are valid
         }
 
-        // Convert start and goal positions to costmap indices
-        int start_x = static_cast<int>((start.pose.position.x - costmap_->info.origin.position.x) / resolution);
-        int start_y = static_cast<int>((start.pose.position.y - costmap_->info.origin.position.y) / resolution);
-        int goal_x = static_cast<int>((goal.pose.position.x - costmap_->info.origin.position.x) / resolution);
-        int goal_y = static_cast<int>((goal.pose.position.y - costmap_->info.origin.position.y) / resolution);
-
-        // A* algorithm
-        std::priority_queue<PlannerNode, std::vector<PlannerNode>, std::greater<PlannerNode>> open_list;
-        std::unordered_map<int, int> came_from;
-        std::unordered_map<int, float> cost_so_far;
-
-        open_list.push({start_x, start_y, 0});
-        cost_so_far[toIndex(start_x, start_y)] = 0;
-
-        std::vector<int> dx = {1, -1, 0, 0};
-        std::vector<int> dy = {0, 0, 1, -1};
-
-        while (!open_list.empty()) {
-            PlannerNode current = open_list.top();
-            open_list.pop();
-
-            if (current.x == goal_x && current.y == goal_y) {
-                break;
-            }
-
-            for (size_t i = 0; i < dx.size(); ++i) {
-                int next_x = current.x + dx[i];
-                int next_y = current.y + dy[i];
-
-                if (next_x < 0 || next_y < 0 || next_x >= width || next_y >= height) {
-                    continue;
-                }
-
-                int index = toIndex(next_x, next_y);
-                if (costmap_->data[index] > obstacle_threshold_) {
-                    continue; // Skip this cell as it is an obstacle
-                }
-
-                float new_cost = cost_so_far[toIndex(current.x, current.y)] + 1;
-                if (!cost_so_far.count(index) || new_cost < cost_so_far[index]) {
-                    cost_so_far[index] = new_cost;
-                    float priority = new_cost + heuristic(next_x, next_y, goal_x, goal_y);
-                    open_list.push({next_x, next_y, priority});
-                    came_from[index] = toIndex(current.x, current.y);
-                }
-            }
-        }
+        std::vector<geometry_msgs::msg::PoseStamped> full_path;
+        geometry_msgs::msg::PoseStamped current_start = waypoints.front();
+        for (size_t i = 1; i < waypoints.size(); ++i) {
+            const auto &current_goal = waypoints[i];
     
-        // Reconstruct the path
-        std::vector<geometry_msgs::msg::PoseStamped> path;
-        int current_index = toIndex(goal_x, goal_y);
-
-        while (came_from.count(current_index)) {
-            int x = current_index % width;
-            int y = current_index / width;
-        
-            geometry_msgs::msg::PoseStamped pose;
-            pose.header.frame_id = costmap_->header.frame_id;
-        
-            // Calculate the x and y positions
-            pose.pose.position.x = x * resolution + costmap_->info.origin.position.x;
-            pose.pose.position.y = y * resolution + costmap_->info.origin.position.y;
-        
-            // Calculate the interpolation factor (t) based on the 2D distance
-            float dx = goal.pose.position.x - start.pose.position.x;
-            float dy = goal.pose.position.y - start.pose.position.y;
-            float dz = goal.pose.position.z - start.pose.position.z;
-            
-        
-            float distance_to_start_2d = std::sqrt(
-                std::pow(pose.pose.position.x - start.pose.position.x, 2) +
-                std::pow(pose.pose.position.y - start.pose.position.y, 2));
-            float total_distance_2d = std::sqrt(dx * dx + dy * dy);
-
-            // Ensure valid interpolation
-            if (total_distance_2d > 0.0) {
-                float t = std::clamp(distance_to_start_2d / total_distance_2d, 0.0f, 1.0f); // Clamp t to [0, 1]
-                pose.pose.position.z = start.pose.position.z + t * dz;
-                
-                tf2::Quaternion quaternion = interpolateYaw(start.pose, goal.pose, t);
-                pose.pose.orientation = tf2::toMsg(quaternion);
-            } else {
-                // If no horizontal movement, directly interpolate based on vertical distance
-                pose.pose.position.z = start.pose.position.z + dz;
-                pose.pose.orientation = goal.pose.orientation; 
-            }
-
-            path.push_back(pose);
-            current_index = came_from[current_index];
-        }
-
-        // Add the start and goal to the path
-        path.push_back(start);
-        std::reverse(path.begin(), path.end());
-        path.push_back(goal);
+            int start_x = static_cast<int>((current_start.pose.position.x - costmap_->info.origin.position.x) / resolution);
+            int start_y = static_cast<int>((current_start.pose.position.y - costmap_->info.origin.position.y) / resolution);
+            int goal_x = static_cast<int>((current_goal.pose.position.x - costmap_->info.origin.position.x) / resolution);
+            int goal_y = static_cast<int>((current_goal.pose.position.y - costmap_->info.origin.position.y) / resolution);
     
-        return path;
-    }
-
-    std::vector<geometry_msgs::msg::PoseStamped> downsamplePath(
-        const std::vector<geometry_msgs::msg::PoseStamped> &path, 
-        double min_distance, 
-        const nav_msgs::msg::Path &adjusted_waypoints) {
-        
-        if (path.size() < 2) {
-            return path; // Not enough points to downsample
-        }
+            // A* algorithm
+            std::priority_queue<PlannerNode, std::vector<PlannerNode>, std::greater<PlannerNode>> open_list;
+            std::unordered_map<int, int> came_from;
+            std::unordered_map<int, float> cost_so_far;
     
-        std::vector<geometry_msgs::msg::PoseStamped> downsampled_path;
-        downsampled_path.push_back(path.front()); // Always include the first point
+            open_list.push({start_x, start_y, 0});
+            cost_so_far[toIndex(start_x, start_y)] = 0;
     
-        // Downsample the path
-        for (size_t i = 1; i < path.size(); ++i) {
-            const auto &last_point = downsampled_path.back().pose.position;
-            const auto &current_point = path[i].pose.position;
+            std::vector<int> dx = {1, -1, 0, 0};
+            std::vector<int> dy = {0, 0, 1, -1};
     
-            // Calculate the Euclidean distance between the last added point and the current point
-            double distance = std::sqrt(
-                std::pow(current_point.x - last_point.x, 2) +
-                std::pow(current_point.y - last_point.y, 2) +
-                std::pow(current_point.z - last_point.z, 2));
+            while (!open_list.empty()) {
+                PlannerNode current = open_list.top();
+                open_list.pop();
     
-            if (distance >= min_distance) {
-                // Prevent adding duplicate points
-                if (downsampled_path.back().pose.position.x != path[i].pose.position.x ||
-                    downsampled_path.back().pose.position.y != path[i].pose.position.y ||
-                    downsampled_path.back().pose.position.z != path[i].pose.position.z) {
-                    downsampled_path.push_back(path[i]);
-                }
-            }
-        }
-    
-        // Define a tolerance for position differences
-        const double position_tolerance = interpolation_distance_;
-    
-        // Remove points from the downsampled path that are too close to the original adjusted points
-        std::vector<geometry_msgs::msg::PoseStamped> filtered_path;
-        for (size_t i = 0; i < downsampled_path.size(); ++i) {
-            const auto &point = downsampled_path[i];
-    
-            // Always keep the first point
-            if (i == 0) {
-                filtered_path.push_back(point);
-                continue;
-            }
-    
-            bool is_close_to_adjusted = false;
-            for (const auto &adjusted_point : adjusted_waypoints.poses) {
-                double distance_to_adjusted = std::sqrt(
-                    std::pow(point.pose.position.x - adjusted_point.pose.position.x, 2) +
-                    std::pow(point.pose.position.y - adjusted_point.pose.position.y, 2) +
-                    std::pow(point.pose.position.z - adjusted_point.pose.position.z, 2));
-    
-                if (distance_to_adjusted <= min_distance / 2) {
-                    is_close_to_adjusted = true;
+                if (current.x == goal_x && current.y == goal_y) {
                     break;
                 }
+    
+                for (size_t j = 0; j < dx.size(); ++j) {
+                    int next_x = current.x + dx[j];
+                    int next_y = current.y + dy[j];
+    
+                    if (next_x < 0 || next_y < 0 || next_x >= width || next_y >= height) {
+                        continue;
+                    }
+    
+                    int index = toIndex(next_x, next_y);
+                    if (costmap_->data[index] > obstacle_threshold_) {
+                        continue; // Skip this cell as it is an obstacle
+                    }
+    
+                    float new_cost = cost_so_far[toIndex(current.x, current.y)] + 1;
+                    if (!cost_so_far.count(index) || new_cost < cost_so_far[index]) {
+                        cost_so_far[index] = new_cost;
+                        float priority = new_cost + heuristic(next_x, next_y, goal_x, goal_y);
+                        open_list.push({next_x, next_y, priority});
+                        came_from[index] = toIndex(current.x, current.y);
+                    }
+                }
             }
     
-            if (!is_close_to_adjusted) {
-                filtered_path.push_back(point);
-            }
-        }
+            // Reconstruct the path
+            std::vector<geometry_msgs::msg::PoseStamped> segment_path;
+            int current_index = toIndex(goal_x, goal_y);
     
-        // Ensure all adjusted waypoints are included in the correct order
-        std::vector<geometry_msgs::msg::PoseStamped> final_path;
-        auto adjusted_it = adjusted_waypoints.poses.begin();
-    
-        for (size_t i = 1; i < path.size(); ++i) { // Start from the second point
-            const auto &original_pose = path[i];
-    
-            // Check if the current original pose matches an adjusted waypoint within tolerance
-            if (adjusted_it != adjusted_waypoints.poses.end() &&
-                std::abs(original_pose.pose.position.x - adjusted_it->pose.position.x) <= position_tolerance &&
-                std::abs(original_pose.pose.position.y - adjusted_it->pose.position.y) <= position_tolerance &&
-                std::abs(original_pose.pose.position.z - adjusted_it->pose.position.z) <= position_tolerance) {
+            while (came_from.count(current_index)) {
+                int x = current_index % width;
+                int y = current_index / width;
+            
+                geometry_msgs::msg::PoseStamped pose;
+                pose.header.frame_id = costmap_->header.frame_id;
+            
+                // Calculate the x and y positions
+                pose.pose.position.x = x * resolution + costmap_->info.origin.position.x;
+                pose.pose.position.y = y * resolution + costmap_->info.origin.position.y;
+            
+                // Calculate the interpolation factor (t) based on the 2D distance
+                float dx = goal.pose.position.x - start.pose.position.x;
+                float dy = goal.pose.position.y - start.pose.position.y;
+                float dz = goal.pose.position.z - start.pose.position.z;
                 
-                final_path.push_back(*adjusted_it);
-                ++adjusted_it; // Move to the next adjusted waypoint
-                continue;
+            
+                float distance_to_start_2d = std::sqrt(
+                    std::pow(pose.pose.position.x - start.pose.position.x, 2) +
+                    std::pow(pose.pose.position.y - start.pose.position.y, 2));
+                float total_distance_2d = std::sqrt(dx * dx + dy * dy);
+
+                // Ensure valid interpolation
+                if (total_distance_2d > 0.0) {
+                    float t = std::clamp(distance_to_start_2d / total_distance_2d, 0.0f, 1.0f); // Clamp t to [0, 1]
+                    pose.pose.position.z = start.pose.position.z + t * dz;
+                    
+                    tf2::Quaternion quaternion = interpolateYaw(start.pose, goal.pose, t);
+                    pose.pose.orientation = tf2::toMsg(quaternion);
+                } else {
+                    // If no horizontal movement, directly interpolate based on vertical distance
+                    pose.pose.position.z = start.pose.position.z + dz;
+                    pose.pose.orientation = goal.pose.orientation; 
+                }
+
+                segment_path.push_back(pose);
+                current_index = came_from[current_index];
             }
     
-            // Add the filtered point if it matches the original pose
-            auto filtered_it = std::find_if(
-                filtered_path.begin(), filtered_path.end(),
-                [&original_pose, position_tolerance](const geometry_msgs::msg::PoseStamped &pose) {
-                    return std::abs(original_pose.pose.position.x - pose.pose.position.x) <= position_tolerance &&
-                           std::abs(original_pose.pose.position.y - pose.pose.position.y) <= position_tolerance &&
-                           std::abs(original_pose.pose.position.z - pose.pose.position.z) <= position_tolerance;
-                });
-    
-            if (filtered_it != filtered_path.end()) {
-                final_path.push_back(*filtered_it);
-            }
+            segment_path.push_back(current_start);
+            std::reverse(segment_path.begin(), segment_path.end());
+            full_path.insert(full_path.end(), segment_path.begin(), segment_path.end());
+            current_start = current_goal;
         }
     
-        return final_path;
+        return full_path;
     }
     
 
