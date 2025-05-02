@@ -104,21 +104,25 @@ private:
             RCLCPP_WARN(this->get_logger(), "Received empty Path message");
             return;
         }
+        nav_msgs::msg::Path all_adjusted_waypoints;
+        all_adjusted_waypoints.header = msg->header;
     
         adjusted_waypoints_.header = msg->header;
         adjusted_waypoints_.poses.clear();
     
         for (const auto &pose : msg->poses) {
             auto [adjusted_pose, _] = adjustWaypointForCollision(pose, costmap_->info.resolution, 20);
-            
-            // Only add valid points to the adjusted waypoints
+    
+            // Add the adjusted pose to the raw waypoints
+            all_adjusted_waypoints.poses.push_back(adjusted_pose);
+    
+            // Only store valid points in adjusted_waypoints_
             if (!adjusted_pose.header.frame_id.empty()) {
                 adjusted_waypoints_.poses.push_back(adjusted_pose);
-            } else {
-                RCLCPP_WARN(this->get_logger(), "Invalid waypoint detected and skipped");
             }
         }
-        waypoints_adjusted_pub_->publish(adjusted_waypoints_);
+        // Publish all waypoints (including invalid ones)
+        waypoints_adjusted_pub_->publish(all_adjusted_waypoints);
     }
 
     geometry_msgs::msg::PoseStamped getCurrentPosition() {
