@@ -66,10 +66,10 @@ class TestFlight(Node):
         self.vehicle_status = VehicleStatus()
         self.takeoff_height = -5.0
         self.current_checkpoint = 0
-        self.coordinates = generate_coordinates(center_x=75, center_y=0, radius=20, num_points=16, height=120)
-        self.center = [75, 0]  # Center of the circle
+        self.coordinates = generate_coordinates(center_x=200, center_y=0, radius=30, num_points=8, height=120)
+        self.center = [200, 0]  # Center of the circle
         self.yaw = 0.0
-        self.number_of_waypoints = 8
+        self.number_of_waypoints = 5
         self.coordinates_to_vist = self.coordinates.copy()
         
 
@@ -81,7 +81,7 @@ class TestFlight(Node):
     def adjust_waypoints_callback(self, waypoints_adjusted):
         new_coordinates = []
 
-        for pose in waypoints_adjusted.poses[:3]:
+        for pose in waypoints_adjusted.poses:
             x = pose.pose.position.x
             y = pose.pose.position.y
             z = pose.pose.position.z
@@ -144,7 +144,7 @@ class TestFlight(Node):
 
             if distance < 0.5:  # Threshold for being "close"
                 self.get_logger().info(f"Reached point {i}: {target}")
-                self.current_checkpoint += 1  # Update checkpoint to the next point
+                self.current_checkpoint += i+1  # Update checkpoint to the next point
                 self.last_update_time = current_time  # Update the last update time
                 break
 
@@ -173,7 +173,8 @@ def calculate_angle(point, center):
 
 def generate_coordinates(center_x=150, center_y=0, center_z=0, radius=75, num_points=90, height=125):
     """Generates coordinates in a circle, starting from the closest point to [0, 0, 50]."""
-    initial_point = [0.0, 0.0, 120.0]
+    initial_point = [0.0, 0.0, 100.0]
+    initial_point_1 = [5.0, 0.0, 105.0]
 
     generated_points = generate_points_in_radius(center_x, center_y, center_z, radius, num_points, height)
 
@@ -184,7 +185,7 @@ def generate_coordinates(center_x=150, center_y=0, center_z=0, radius=75, num_po
     # Arrange the points in circular order starting from the closest
     ordered_points = generated_points[closest_point_index:] + generated_points[:closest_point_index]
 
-    coordinates = [initial_point] + [ordered_points[0]] + ordered_points[1:] + [initial_point]
+    coordinates = [initial_point] + [initial_point_1] + [ordered_points[0]] + ordered_points[1:] + [initial_point]
 
     return coordinates
 
