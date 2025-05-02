@@ -109,7 +109,7 @@ private:
         adjusted_waypoints_.poses.clear();
     
         for (const auto &pose : msg->poses) {
-            auto adjusted_pose = adjustWaypointForCollision(pose, costmap_->info.resolution, 20);
+            auto [adjusted_pose, _] = adjustWaypointForCollision(pose, costmap_->info.resolution, 20);
             adjusted_waypoints_.poses.push_back(adjusted_pose);
         }
     
@@ -136,53 +136,50 @@ private:
         return current_position;
     }
 
-    void planAndPublishPath() {
-        if (!costmap_ || adjusted_waypoints_.poses.empty()) {
-            RCLCPP_ERROR(this->get_logger(), "Cannot plan path: costmap or trajectory path is missing");
-            return;
+    // Function to check and adjust waypoints for collision-free zones
+    std::pair<geometry_msgs::msg::PoseStamped, bool> adjustWaypointForCollision(
+        const geometry_msgs::msg::PoseStamped &waypoint, float resolution, int max_attempts) {
+    
+        geometry_msgs::msg::PoseStamped adjusted_waypoint = waypoint;
+        bool was_adjusted = false;
+    
+        if (!costmap_) {
+            RCLCPP_ERROR(this->get_logger(), "Costmap is null");
+            adjusted_waypoint.header.frame_id = ""; // Mark as invalid
+            return {adjusted_waypoint, was_adjusted};
         }
-
-        // Get the robot's current position in the costmap frame
-        geometry_msgs::msg::PoseStamped current_position = getCurrentPosition();
-        if (current_position.header.frame_id.empty()) {
-            RCLCPP_ERROR(this->get_logger(), "Failed to retrieve current position");
-            return;
+    
+        // Extract yaw from the waypoint's quaternion only after the bounds check
+        tf2::Quaternion quat;
+        tf2::fromMsg(adjusted_waypoint.pose.orientation, quat);
+        double yaw = tf2::getYaw(quat);
+    
+        for (int attempt = 0; attempt < max_attempts; ++attempt) {
+            // Convert waypoint position to costmap indices
+            int x_index = static_cast<int>((adjusted_waypoint.pose.position.x - costmap_->info.origin.position.x) / resolution);
+            int y_index = static_cast<int>((adjusted_waypoint.pose.position.y - costmap_->info.origin.position.y) / resolution);
+    
+            // Check if the waypoint is within bounds
+            if (x_index >= 0 && x_index < static_cast<int>(costmap_->info.width) &&
+                y_index >= 0 && y_index < static_cast<int>(costmap_->info.height)) {
+                int index = y_index * costmap_->info.width + x_index;
+    
+                // Check if the waypoint is in a collision-free zone
+                if (costmap_->data[index] <= obstacle_threshold_) {
+                    return {adjusted_waypoint, was_adjusted}; // No adjustment needed
+                }
+            }
+    
+            // Move the waypoint in the negative yaw direction by 0.5 meters
+            adjusted_waypoint.pose.position.x -= 0.5 * std::cos(yaw);
+            adjusted_waypoint.pose.position.y -= 0.5 * std::sin(yaw);
+            was_adjusted = true; // Mark as adjusted
         }
-        // Initialize the planned path
-        nav_msgs::msg::Path init_path;
-        init_path.header.stamp = this->now();
-        init_path.header.frame_id = costmap_->header.frame_id;
-
-        // Add the current position to the path
-        init_path.poses.push_back(current_position);
-
-        // Add the adjusted waypoints to the path
-        for (const auto &waypoint : adjusted_waypoints_.poses) {
-            init_path.poses.push_back(waypoint);
-        }
-
-        // Smooth the path and store it in a new Path message
-        nav_msgs::msg::Path smoothed_path;
-        smoothed_path.header.stamp = this->now();
-        smoothed_path.header.frame_id = costmap_->header.frame_id;
-        smoothed_path.poses = smoothPath(init_path.poses, interpolation_distance_);
-
-        
-
-
-
-
-
-
-
-
-        smoothed_path.header.stamp = this->now(); // Update the timestamp
-        smoothed_path.header.frame_id = costmap_->header.frame_id; // Set the frame ID
-        // Publish the planned path
-        smoothed_path_pub_->publish(smoothed_path);
+    
+        // If no collision-free zone is found, return an invalid waypoint
+        adjusted_waypoint.header.frame_id = ""; // Mark as invalid
+        return {adjusted_waypoint, was_adjusted};
     }
-
-
 
     // Function to interpolate yaw between two poses
     tf2::Quaternion interpolateYaw(
@@ -209,45 +206,57 @@ private:
         return interpolated_quat;
     }
 
-    // Function to check and adjust waypoints for collision-free zones
-    geometry_msgs::msg::PoseStamped adjustWaypointForCollision(
-        const geometry_msgs::msg::PoseStamped &waypoint, float resolution, int max_attempts) {
-
-        if (!costmap_) {
-            RCLCPP_ERROR(this->get_logger(), "Costmap is null");
-            return geometry_msgs::msg::PoseStamped(); // Return an invalid waypoint
+    void planAndPublishPath() {
+        if (!costmap_ || adjusted_waypoints_.poses.empty()) {
+            RCLCPP_ERROR(this->get_logger(), "Cannot plan path: costmap or trajectory path is missing");
+            return;
         }
 
-        geometry_msgs::msg::PoseStamped adjusted_waypoint = waypoint;
-
-        // Extract yaw from the waypoint's quaternion only after the bounds check
-        tf2::Quaternion quat;
-        tf2::fromMsg(adjusted_waypoint.pose.orientation, quat);
-        double yaw = tf2::getYaw(quat);
-
-        for (int attempt = 0; attempt < max_attempts; ++attempt) {
-            // Convert waypoint position to costmap indices
-            int x_index = static_cast<int>((adjusted_waypoint.pose.position.x - costmap_->info.origin.position.x) / resolution);
-            int y_index = static_cast<int>((adjusted_waypoint.pose.position.y - costmap_->info.origin.position.y) / resolution);
-
-            // Check if the waypoint is within bounds
-            if (x_index >= 0 && x_index < static_cast<int>(costmap_->info.width) &&
-                y_index >= 0 && y_index < static_cast<int>(costmap_->info.height)) {
-                int index = y_index * costmap_->info.width + x_index;
-
-                // Check if the waypoint is in a collision-free zone
-                if (costmap_->data[index] <= obstacle_threshold_) { // 90 is the threshold for collision
-                    return adjusted_waypoint; // Collision-free waypoint found
-                }
-            }          
-            // Move the waypoint in the negative yaw direction by 0.5 meters
-            adjusted_waypoint.pose.position.x -= 0.5 * std::cos(yaw);
-            adjusted_waypoint.pose.position.y -= 0.5 * std::sin(yaw);
+        // Get the robot's current position in the costmap frame
+        geometry_msgs::msg::PoseStamped current_position = getCurrentPosition();
+        if (current_position.header.frame_id.empty()) {
+            RCLCPP_ERROR(this->get_logger(), "Failed to retrieve current position");
+            return;
         }
+        // Initialize the planned path
+        nav_msgs::msg::Path init_path;
+        init_path.header.stamp = this->now();
+        init_path.header.frame_id = costmap_->header.frame_id;
 
-        // If no collision-free zone is found, return an invalid waypoint
-        adjusted_waypoint.header.frame_id = ""; // Mark as invalid
-        return adjusted_waypoint;
+        // Add the current position to the path
+        init_path.poses.push_back(current_position);
+
+        // Add the adjusted waypoints to the path
+        for (const auto &waypoint : adjusted_waypoints_.poses) {
+            init_path.poses.push_back(waypoint);
+        }
+        // Make a raw path from the adjusted waypoints
+        nav_msgs::msg::Path raw_path;
+        raw_path.header.stamp = this->now();
+        raw_path.header.frame_id = costmap_->header.frame_id;
+
+        for (size_t i = 0; i < init_path.poses.size() - 1; ++i) {
+            const auto &start = init_path.poses[i];
+            const auto &goal = init_path.poses[i + 1];
+    
+            // Plan the path for the current segment
+            auto segment_path = planPath(start, goal);
+
+            // Add the segment path to the raw path
+            raw_path.poses.insert(raw_path.poses.end(), segment_path.begin(), segment_path.end());
+        }
+        // Publish the raw path
+        raw_path_pub_->publish(raw_path);
+
+        // Smooth the raw path
+        std::vector<geometry_msgs::msg::PoseStamped> smoothed_poses = smoothPath(raw_path.poses, interpolation_distance_);
+
+        nav_msgs::msg::Path smoothed_path;
+        smoothed_path.header.stamp = this->now(); // Update the timestamp
+        smoothed_path.header.frame_id = costmap_->header.frame_id; // Set the frame ID
+        smoothed_path.poses = smoothed_poses;
+        // Publish the planned path
+        smoothed_path_pub_->publish(smoothed_path);
     }
 
     // A* path planning function
@@ -258,7 +267,6 @@ private:
             RCLCPP_ERROR(this->get_logger(), "No costmap available");
             return {};
         }
-
         bool invalid_flag = false;
     
         int width = costmap_->info.width;
@@ -271,17 +279,8 @@ private:
             return std::sqrt(std::pow(x1 - x2, 2) + std::pow(y1 - y2, 2));
         };
     
-        // Adjust the start and goal waypoints for collision-free zones
-        geometry_msgs::msg::PoseStamped adjusted_start = adjustWaypointForCollision(start, resolution, 20);
-        geometry_msgs::msg::PoseStamped adjusted_goal = adjustWaypointForCollision(goal, resolution, 20);
-    
-        if (adjusted_start.header.frame_id.empty() || adjusted_goal.header.frame_id.empty()) {
-            RCLCPP_WARN(this->get_logger(), "Start or goal waypoint could not be adjusted to a collision-free zone");
-            return {};
-        }
-    
         // Interpolate intermediate waypoints if needed
-        std::vector<geometry_msgs::msg::PoseStamped> waypoints = {adjusted_start};
+        std::vector<geometry_msgs::msg::PoseStamped> waypoints = {start};
         float distance = std::sqrt(
             std::pow(goal.pose.position.x - start.pose.position.x, 2) +
             std::pow(goal.pose.position.y - start.pose.position.y, 2) +
@@ -302,122 +301,119 @@ private:
                 intermediate.pose.orientation = tf2::toMsg(quaternion);
     
                 // Adjust the waypoint for collision-free zones
-                geometry_msgs::msg::PoseStamped adjusted_intermediate = adjustWaypointForCollision(intermediate, resolution, 20);
+                auto [adjusted_intermediate, was_adjusted] = adjustWaypointForCollision(intermediate, resolution, 20);
                 if (adjusted_intermediate.header.frame_id.empty()) {
                     invalid_flag = true;
+                    break; // Stop processing if the waypoint is invalid
                 } else {
-                    waypoints.push_back(adjusted_intermediate);
+                    if (was_adjusted) {
+                        waypoints.push_back(adjusted_intermediate);
+                    }
                 }
             }
         }
-        waypoints.push_back(adjusted_goal);
+        waypoints.push_back(goal);
         if (!invalid_flag) {
             return waypoints; // Return the waypoints if all are valid
         }
 
-        // Plan path between consecutive waypoints using A*
-        std::vector<geometry_msgs::msg::PoseStamped> full_path;
-        geometry_msgs::msg::PoseStamped current_start = waypoints.front();
-        for (size_t i = 1; i < waypoints.size(); ++i) {
-            const auto &current_goal = waypoints[i];
-    
-            int start_x = static_cast<int>((current_start.pose.position.x - costmap_->info.origin.position.x) / resolution);
-            int start_y = static_cast<int>((current_start.pose.position.y - costmap_->info.origin.position.y) / resolution);
-            int goal_x = static_cast<int>((current_goal.pose.position.x - costmap_->info.origin.position.x) / resolution);
-            int goal_y = static_cast<int>((current_goal.pose.position.y - costmap_->info.origin.position.y) / resolution);
-    
-            // A* algorithm
-            std::priority_queue<PlannerNode, std::vector<PlannerNode>, std::greater<PlannerNode>> open_list;
-            std::unordered_map<int, int> came_from;
-            std::unordered_map<int, float> cost_so_far;
-    
-            open_list.push({start_x, start_y, 0});
-            cost_so_far[toIndex(start_x, start_y)] = 0;
-    
-            std::vector<int> dx = {1, -1, 0, 0};
-            std::vector<int> dy = {0, 0, 1, -1};
-    
-            while (!open_list.empty()) {
-                PlannerNode current = open_list.top();
-                open_list.pop();
-    
-                if (current.x == goal_x && current.y == goal_y) {
-                    break;
-                }
-    
-                for (size_t j = 0; j < dx.size(); ++j) {
-                    int next_x = current.x + dx[j];
-                    int next_y = current.y + dy[j];
-    
-                    if (next_x < 0 || next_y < 0 || next_x >= width || next_y >= height) {
-                        continue;
-                    }
-    
-                    int index = toIndex(next_x, next_y);
-                    if (costmap_->data[index] > obstacle_threshold_) {
-                        continue; // Skip this cell as it is an obstacle
-                    }
-    
-                    float new_cost = cost_so_far[toIndex(current.x, current.y)] + 1;
-                    if (!cost_so_far.count(index) || new_cost < cost_so_far[index]) {
-                        cost_so_far[index] = new_cost;
-                        float priority = new_cost + heuristic(next_x, next_y, goal_x, goal_y);
-                        open_list.push({next_x, next_y, priority});
-                        came_from[index] = toIndex(current.x, current.y);
-                    }
-                }
-            }
-    
-            // Reconstruct the path
-            std::vector<geometry_msgs::msg::PoseStamped> segment_path;
-            int current_index = toIndex(goal_x, goal_y);
-    
-            while (came_from.count(current_index)) {
-                int x = current_index % width;
-                int y = current_index / width;
-            
-                geometry_msgs::msg::PoseStamped pose;
-                pose.header.frame_id = costmap_->header.frame_id;
-            
-                // Calculate the x and y positions
-                pose.pose.position.x = x * resolution + costmap_->info.origin.position.x;
-                pose.pose.position.y = y * resolution + costmap_->info.origin.position.y;
-            
-                // Calculate the interpolation factor (t) based on the 2D distance
-                float dx = goal.pose.position.x - start.pose.position.x;
-                float dy = goal.pose.position.y - start.pose.position.y;
-                float dz = goal.pose.position.z - start.pose.position.z;
-                
-            
-                float distance_to_start_2d = std::sqrt(
-                    std::pow(pose.pose.position.x - start.pose.position.x, 2) +
-                    std::pow(pose.pose.position.y - start.pose.position.y, 2));
-                float total_distance_2d = std::sqrt(dx * dx + dy * dy);
+        // Convert start and goal positions to costmap indices
+        int start_x = static_cast<int>((start.pose.position.x - costmap_->info.origin.position.x) / resolution);
+        int start_y = static_cast<int>((start.pose.position.y - costmap_->info.origin.position.y) / resolution);
+        int goal_x = static_cast<int>((goal.pose.position.x - costmap_->info.origin.position.x) / resolution);
+        int goal_y = static_cast<int>((goal.pose.position.y - costmap_->info.origin.position.y) / resolution);
 
-                // Ensure valid interpolation
-                if (total_distance_2d > 0.0) {
-                    float t = std::clamp(distance_to_start_2d / total_distance_2d, 0.0f, 1.0f); // Clamp t to [0, 1]
-                    pose.pose.position.z = start.pose.position.z + t * dz;
-                    
-                    tf2::Quaternion quaternion = interpolateYaw(start.pose, goal.pose, t);
-                    pose.pose.orientation = tf2::toMsg(quaternion);
-                } else {
-                    // If no horizontal movement, directly interpolate based on vertical distance
-                    pose.pose.position.z = start.pose.position.z + dz;
-                    pose.pose.orientation = goal.pose.orientation; 
+        // A* algorithm
+        std::priority_queue<PlannerNode, std::vector<PlannerNode>, std::greater<PlannerNode>> open_list;
+        std::unordered_map<int, int> came_from;
+        std::unordered_map<int, float> cost_so_far;
+
+        open_list.push({start_x, start_y, 0});
+        cost_so_far[toIndex(start_x, start_y)] = 0;
+
+        std::vector<int> dx = {1, -1, 0, 0};
+        std::vector<int> dy = {0, 0, 1, -1};
+
+        while (!open_list.empty()) {
+            PlannerNode current = open_list.top();
+            open_list.pop();
+
+            if (current.x == goal_x && current.y == goal_y) {
+                break;
+            }
+
+            for (size_t i = 0; i < dx.size(); ++i) {
+                int next_x = current.x + dx[i];
+                int next_y = current.y + dy[i];
+
+                if (next_x < 0 || next_y < 0 || next_x >= width || next_y >= height) {
+                    continue;
                 }
 
-                segment_path.push_back(pose);
-                current_index = came_from[current_index];
+                int index = toIndex(next_x, next_y);
+                if (costmap_->data[index] > obstacle_threshold_) {
+                    continue; // Skip this cell as it is an obstacle
+                }
+
+                float new_cost = cost_so_far[toIndex(current.x, current.y)] + 1;
+                if (!cost_so_far.count(index) || new_cost < cost_so_far[index]) {
+                    cost_so_far[index] = new_cost;
+                    float priority = new_cost + heuristic(next_x, next_y, goal_x, goal_y);
+                    open_list.push({next_x, next_y, priority});
+                    came_from[index] = toIndex(current.x, current.y);
+                }
             }
-    
-            segment_path.push_back(current_start);
-            std::reverse(segment_path.begin(), segment_path.end());
-            full_path.insert(full_path.end(), segment_path.begin(), segment_path.end());
-            current_start = current_goal;
         }
     
-        return full_path;
+        // Reconstruct the path
+        std::vector<geometry_msgs::msg::PoseStamped> path;
+        int current_index = toIndex(goal_x, goal_y);
+
+        while (came_from.count(current_index)) {
+            int x = current_index % width;
+            int y = current_index / width;
+        
+            geometry_msgs::msg::PoseStamped pose;
+            pose.header.frame_id = costmap_->header.frame_id;
+        
+            // Calculate the x and y positions
+            pose.pose.position.x = x * resolution + costmap_->info.origin.position.x;
+            pose.pose.position.y = y * resolution + costmap_->info.origin.position.y;
+        
+            // Calculate the interpolation factor (t) based on the 2D distance
+            float dx = goal.pose.position.x - start.pose.position.x;
+            float dy = goal.pose.position.y - start.pose.position.y;
+            float dz = goal.pose.position.z - start.pose.position.z;
+            
+        
+            float distance_to_start_2d = std::sqrt(
+                std::pow(pose.pose.position.x - start.pose.position.x, 2) +
+                std::pow(pose.pose.position.y - start.pose.position.y, 2));
+            float total_distance_2d = std::sqrt(dx * dx + dy * dy);
+
+            // Ensure valid interpolation
+            if (total_distance_2d > 0.0) {
+                float t = std::clamp(distance_to_start_2d / total_distance_2d, 0.0f, 1.0f); // Clamp t to [0, 1]
+                pose.pose.position.z = start.pose.position.z + t * dz;
+                
+                tf2::Quaternion quaternion = interpolateYaw(start.pose, goal.pose, t);
+                pose.pose.orientation = tf2::toMsg(quaternion);
+            } else {
+                // If no horizontal movement, directly interpolate based on vertical distance
+                pose.pose.position.z = start.pose.position.z + dz;
+                pose.pose.orientation = goal.pose.orientation; 
+            }
+
+            path.push_back(pose);
+            current_index = came_from[current_index];
+        }
+
+        // Add the start and goal to the path
+        path.push_back(start);
+        std::reverse(path.begin(), path.end());
+        path.push_back(goal);
+    
+        return path;
     }
 
     std::vector<geometry_msgs::msg::PoseStamped> downsamplePath(
