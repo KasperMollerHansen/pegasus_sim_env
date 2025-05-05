@@ -61,9 +61,9 @@ public:
             "/fmu/out/vehicle_control_mode", qos_profile, [this](const VehicleControlMode::SharedPtr msg) {
                 armed_ = msg->flag_armed;
                 if (armed_) {
-                    RCLCPP_INFO(this->get_logger(), "Drone is armed.");
+                    // RCLCPP_INFO(this->get_logger(), "Drone is armed.");
                 } else {
-                    RCLCPP_INFO(this->get_logger(), "Drone is disarmed.");
+                    // RCLCPP_INFO(this->get_logger(), "Drone is disarmed.");
                 }
             });
 
@@ -128,7 +128,7 @@ void OffboardControl::publish_offboard_control_mode_velocity()
     msg.body_rate = false;
     msg.timestamp = this->get_clock()->now().nanoseconds() / 1000;
     offboard_control_mode_publisher_->publish(msg);
-    RCLCPP_INFO(this->get_logger(), "Published Offboard Control Mode (Velocity)");
+    // RCLCPP_INFO(this->get_logger(), "Published Offboard Control Mode (Velocity)");
 }
 
 int countStraightLinePoints(const std::vector<geometry_msgs::msg::PoseStamped> &poses) {
@@ -180,7 +180,7 @@ void OffboardControl::publish_vehicle_command(uint16_t command, float param1, fl
     msg.from_external = true;
     msg.timestamp = this->get_clock()->now().nanoseconds() / 1000;
     vehicle_command_publisher_->publish(msg);
-    RCLCPP_INFO(this->get_logger(), "Published Vehicle Command: %d", command);
+    // RCLCPP_INFO(this->get_logger(), "Published Vehicle Command: %d", command);
 }
 
 void OffboardControl::process_path(const Path::SharedPtr msg)

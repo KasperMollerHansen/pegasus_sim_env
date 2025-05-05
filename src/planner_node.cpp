@@ -97,7 +97,7 @@ private:
 
     void costmapCallback(const nav_msgs::msg::OccupancyGrid::SharedPtr msg) {
         costmap_ = msg;
-        RCLCPP_INFO(this->get_logger(), "Received costmap");
+        // RCLCPP_INFO(this->get_logger(), "Received costmap");
     
         // Re-plan and publish the path only when the costmap is updated
         if (!adjusted_waypoints_.poses.empty()) {
@@ -183,7 +183,7 @@ private:
         ground_truth_trajectory_pub_->publish(ground_truth_trajectory_);
     
         // Log for debugging
-        RCLCPP_INFO(this->get_logger(), "Appended current position to ground truth trajectory and published");
+        // RCLCPP_INFO(this->get_logger(), "Appended current position to ground truth trajectory and published");
     }
 
     // Function to check and adjust waypoints for collision-free zones
@@ -303,8 +303,9 @@ private:
         raw_path.header.frame_id = costmap_->header.frame_id;
         
         nav_msgs::msg::Path smoothed_path;
+        int idx = -1;
 
-        for (size_t i = 0; i < init_path.poses.size() - 1; ++i) {
+        for (size_t i = 0; i < init_path.poses.size() - 1 && i < 3; ++i) { // Limit to 3 segments
             const auto &start = init_path.poses[i];
             const auto &goal = init_path.poses[i + 1];
     
@@ -315,6 +316,7 @@ private:
             if (segment_path.empty()) {
                 RCLCPP_ERROR(this->get_logger(), "Failed to plan a valid path segment between waypoints %zu and %zu.", i, i + 1);
                 path_invalid_flag_ = true; // Mark the path as invalid
+                idx = i;
                 break; // Stop further planning
             }
             path_invalid_flag_ = false; 
@@ -323,7 +325,7 @@ private:
             raw_path.poses.insert(raw_path.poses.end(), segment_path.begin(), segment_path.end());
         }
 
-        if (path_invalid_flag_) {
+        if (path_invalid_flag_ && idx == 0) {
             RCLCPP_ERROR(this->get_logger(), "Path planning failed. Marking the path as invalid and aborting.");
             return; // Abort without publishing
         }
