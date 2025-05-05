@@ -285,7 +285,7 @@ private:
         smoothed_path_pub_->publish(smoothed_path);
     }
 
-    // A* path planning function
+    // Plan path
     std::vector<geometry_msgs::msg::PoseStamped> planPath(
         const geometry_msgs::msg::PoseStamped &start,
         const geometry_msgs::msg::PoseStamped &goal) {
@@ -342,108 +342,101 @@ private:
         if (!invalid_flag) {
             return waypoints; // Return the waypoints if all are valid
         }
-
+        // If any waypoint is invalid, use A*
         std::vector<geometry_msgs::msg::PoseStamped> full_path;
-        geometry_msgs::msg::PoseStamped current_start = waypoints.front();
-        for (size_t i = 1; i < waypoints.size(); ++i) {
-            const auto &current_goal = waypoints[i];
-    
-            int start_x = static_cast<int>((current_start.pose.position.x - costmap_->info.origin.position.x) / resolution);
-            int start_y = static_cast<int>((current_start.pose.position.y - costmap_->info.origin.position.y) / resolution);
-            int goal_x = static_cast<int>((current_goal.pose.position.x - costmap_->info.origin.position.x) / resolution);
-            int goal_y = static_cast<int>((current_goal.pose.position.y - costmap_->info.origin.position.y) / resolution);
-    
-            // A* algorithm
-            std::priority_queue<PlannerNode, std::vector<PlannerNode>, std::greater<PlannerNode>> open_list;
-            std::unordered_map<int, int> came_from;
-            std::unordered_map<int, float> cost_so_far;
-    
-            open_list.push({start_x, start_y, 0});
-            cost_so_far[toIndex(start_x, start_y)] = 0;
-    
-            std::vector<int> dx = {1, -1, 0, 0};
-            std::vector<int> dy = {0, 0, 1, -1};
-    
-            while (!open_list.empty()) {
-                PlannerNode current = open_list.top();
-                open_list.pop();
-    
-                if (current.x == goal_x && current.y == goal_y) {
-                    break;
-                }
-    
-                for (size_t j = 0; j < dx.size(); ++j) {
-                    int next_x = current.x + dx[j];
-                    int next_y = current.y + dy[j];
-    
-                    if (next_x < 0 || next_y < 0 || next_x >= width || next_y >= height) {
-                        continue;
-                    }
-    
-                    int index = toIndex(next_x, next_y);
-                    if (costmap_->data[index] > obstacle_threshold_) {
-                        continue; // Skip this cell as it is an obstacle
-                    }
-    
-                    float new_cost = cost_so_far[toIndex(current.x, current.y)] + 1;
-                    if (!cost_so_far.count(index) || new_cost < cost_so_far[index]) {
-                        cost_so_far[index] = new_cost;
-                        float priority = new_cost + heuristic(next_x, next_y, goal_x, goal_y);
-                        open_list.push({next_x, next_y, priority});
-                        came_from[index] = toIndex(current.x, current.y);
-                    }
-                }
-            }
-    
-            // Reconstruct the path
-            std::vector<geometry_msgs::msg::PoseStamped> segment_path;
-            int current_index = toIndex(goal_x, goal_y);
-    
-            while (came_from.count(current_index)) {
-                int x = current_index % width;
-                int y = current_index / width;
-            
-                geometry_msgs::msg::PoseStamped pose;
-                pose.header.frame_id = costmap_->header.frame_id;
-            
-                // Calculate the x and y positions
-                pose.pose.position.x = x * resolution + costmap_->info.origin.position.x;
-                pose.pose.position.y = y * resolution + costmap_->info.origin.position.y;
-            
-                // Calculate the interpolation factor (t) based on the 2D distance
-                float dx = goal.pose.position.x - start.pose.position.x;
-                float dy = goal.pose.position.y - start.pose.position.y;
-                float dz = goal.pose.position.z - start.pose.position.z;
-                
-            
-                float distance_to_start_2d = std::sqrt(
-                    std::pow(pose.pose.position.x - start.pose.position.x, 2) +
-                    std::pow(pose.pose.position.y - start.pose.position.y, 2));
-                float total_distance_2d = std::sqrt(dx * dx + dy * dy);
 
-                // Ensure valid interpolation
-                if (total_distance_2d > 0.0) {
-                    float t = std::clamp(distance_to_start_2d / total_distance_2d, 0.0f, 1.0f); // Clamp t to [0, 1]
-                    pose.pose.position.z = start.pose.position.z + t * dz;
-                    
-                    tf2::Quaternion quaternion = interpolateYaw(start.pose, goal.pose, t);
-                    pose.pose.orientation = tf2::toMsg(quaternion);
-                } else {
-                    // If no horizontal movement, directly interpolate based on vertical distance
-                    pose.pose.position.z = start.pose.position.z + dz;
-                    pose.pose.orientation = goal.pose.orientation; 
-                }
-
-                segment_path.push_back(pose);
-                current_index = came_from[current_index];
-            }
-    
-            segment_path.push_back(current_start);
-            std::reverse(segment_path.begin(), segment_path.end());
-            full_path.insert(full_path.end(), segment_path.begin(), segment_path.end());
-            current_start = current_goal;
+        if (waypoints.size() < 2) {
+            RCLCPP_ERROR(this->get_logger(), "Not enough waypoints to plan a path");
+            return {};
         }
-    
+        
+        int start_x = static_cast<int>((start.pose.position.x - costmap_->info.origin.position.x) / resolution);
+        int start_y = static_cast<int>((start.pose.position.y - costmap_->info.origin.position.y) / resolution);
+        int goal_x = static_cast<int>((goal.pose.position.x - costmap_->info.origin.position.x) / resolution);
+        int goal_y = static_cast<int>((goal.pose.position.y - costmap_->info.origin.position.y) / resolution);
+        
+        // A* algorithm
+        std::priority_queue<PlannerNode, std::vector<PlannerNode>, std::greater<PlannerNode>> open_list;
+        std::unordered_map<int, int> came_from;
+        std::unordered_map<int, float> cost_so_far;
+        
+        open_list.push({start_x, start_y, 0});
+        cost_so_far[toIndex(start_x, start_y)] = 0;
+        
+        std::vector<int> dx = {1, -1, 0, 0};
+        std::vector<int> dy = {0, 0, 1, -1};
+        
+        while (!open_list.empty()) {
+            PlannerNode current = open_list.top();
+            open_list.pop();
+        
+            if (current.x == goal_x && current.y == goal_y) {
+                break;
+            }
+        
+            for (size_t j = 0; j < dx.size(); ++j) {
+                int next_x = current.x + dx[j];
+                int next_y = current.y + dy[j];
+        
+                if (next_x < 0 || next_y < 0 || next_x >= width || next_y >= height) {
+                    continue;
+                }
+        
+                int index = toIndex(next_x, next_y);
+                if (costmap_->data[index] > obstacle_threshold_) {
+                    continue; // Skip this cell as it is an obstacle
+                }
+        
+                float new_cost = cost_so_far[toIndex(current.x, current.y)] + 1;
+                if (!cost_so_far.count(index) || new_cost < cost_so_far[index]) {
+                    cost_so_far[index] = new_cost;
+                    float priority = new_cost + heuristic(next_x, next_y, goal_x, goal_y);
+                    open_list.push({next_x, next_y, priority});
+                    came_from[index] = toIndex(current.x, current.y);
+                }
+            }
+        }
+        
+        // Reconstruct the path
+        int current_index = toIndex(goal_x, goal_y);
+        
+        while (came_from.count(current_index)) {
+            int x = current_index % width;
+            int y = current_index / width;
+        
+            geometry_msgs::msg::PoseStamped pose;
+            pose.header.frame_id = costmap_->header.frame_id;
+        
+            pose.pose.position.x = x * resolution + costmap_->info.origin.position.x;
+            pose.pose.position.y = y * resolution + costmap_->info.origin.position.y;
+        
+            float dx = goal.pose.position.x - start.pose.position.x;
+            float dy = goal.pose.position.y - start.pose.position.y;
+            float dz = goal.pose.position.z - start.pose.position.z;
+        
+            float distance_to_start_2d = std::sqrt(
+                std::pow(pose.pose.position.x - start.pose.position.x, 2) +
+                std::pow(pose.pose.position.y - start.pose.position.y, 2));
+            float total_distance_2d = std::sqrt(dx * dx + dy * dy);
+        
+            if (total_distance_2d > 0.0) {
+                float t = std::clamp(distance_to_start_2d / total_distance_2d, 0.0f, 1.0f);
+                pose.pose.position.z = start.pose.position.z + t * dz;
+        
+                tf2::Quaternion quaternion = interpolateYaw(start.pose, goal.pose, t);
+                pose.pose.orientation = tf2::toMsg(quaternion);
+            } else {
+                pose.pose.position.z = start.pose.position.z + dz;
+                pose.pose.orientation = goal.pose.orientation;
+            }
+        
+            full_path.push_back(pose);
+            current_index = came_from[current_index];
+        }
+        
+        full_path.push_back(start);
+        std::reverse(full_path.begin(), full_path.end());
+        
         return full_path;
     }
     
