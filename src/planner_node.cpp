@@ -305,7 +305,7 @@ private:
         nav_msgs::msg::Path smoothed_path;
         int idx = -1;
 
-        for (size_t i = 0; i < init_path.poses.size() - 1 && i < 3; ++i) { // Limit to 3 segments
+        for (size_t i = 0; i < init_path.poses.size() - 1 && i < 4; ++i) { // Limit to 4 segments
             const auto &start = init_path.poses[i];
             const auto &goal = init_path.poses[i + 1];
     

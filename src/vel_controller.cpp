@@ -157,7 +157,7 @@ int countStraightLinePoints(const std::vector<geometry_msgs::msg::PoseStamped> &
         dir2.normalize();
 
         // Check if the direction vectors are collinear
-        if ((dir1.cross(dir2)).norm() < 1e-2) { // Cross product close to zero
+        if ((dir1.cross(dir2)).norm() < 1e-1) { // Cross product close to zero
             count++;
         } else {
             break; // Stop counting if the line is broken
