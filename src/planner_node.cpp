@@ -62,7 +62,7 @@ public:
             std::bind(&PathPlanner::waypointsCallback, this, std::placeholders::_1));
 
         // Publisher for the planned path
-        waypoints_adjusted_pub_ = this->create_publisher<nav_msgs::msg::Path>(path_planner_prefix + "/waypoints_adjusted", 10);
+        viewpoints_adjusted_pub_ = this->create_publisher<nav_msgs::msg::Path>(path_planner_prefix + "/viewpoints_adjusted", 10);
         raw_path_pub_ = this->create_publisher<nav_msgs::msg::Path>(path_planner_prefix + "/raw_path", 10);
         down_sampled_path_pub_ = this->create_publisher<nav_msgs::msg::Path>(path_planner_prefix + "/downsampled_path", 10);
         smoothed_path_pub_ = this->create_publisher<nav_msgs::msg::Path>(path_planner_prefix + "/smoothed_path", 10);
@@ -72,7 +72,7 @@ public:
 private:
     rclcpp::Subscription<nav_msgs::msg::OccupancyGrid>::SharedPtr costmap_sub_;
     rclcpp::Subscription<nav_msgs::msg::Path>::SharedPtr waypoints_sub_;
-    rclcpp::Publisher<nav_msgs::msg::Path>::SharedPtr waypoints_adjusted_pub_;
+    rclcpp::Publisher<nav_msgs::msg::Path>::SharedPtr viewpoints_adjusted_pub_;
     rclcpp::Publisher<nav_msgs::msg::Path>::SharedPtr raw_path_pub_;
     rclcpp::Publisher<nav_msgs::msg::Path>::SharedPtr down_sampled_path_pub_;
     rclcpp::Publisher<nav_msgs::msg::Path>::SharedPtr smoothed_path_pub_;
@@ -122,7 +122,7 @@ private:
             }
         }
         // Publish all waypoints (including invalid ones)
-        waypoints_adjusted_pub_->publish(all_adjusted_waypoints);
+        viewpoints_adjusted_pub_->publish(all_adjusted_waypoints);
     }
 
     geometry_msgs::msg::PoseStamped getCurrentPosition() {
@@ -158,46 +158,55 @@ private:
             return {adjusted_waypoint, was_adjusted};
         }
     
-        // Extract yaw from the waypoint's quaternion only after the bounds check
+        // Extract yaw from the waypoint's quaternion
         tf2::Quaternion quat;
         tf2::fromMsg(adjusted_waypoint.pose.orientation, quat);
         double yaw = tf2::getYaw(quat);
-        
-        bool is_valid = false;
-        // Check if the waypoint is within bounds
+    
         for (int attempt = 0; attempt < max_attempts; ++attempt) {
-            // Convert waypoint position to costmap indices
+            // Convert current waypoint position to costmap indices
             int x_index = static_cast<int>((adjusted_waypoint.pose.position.x - costmap_->info.origin.position.x) / resolution);
             int y_index = static_cast<int>((adjusted_waypoint.pose.position.y - costmap_->info.origin.position.y) / resolution);
     
-            // Check if the waypoint is within bounds
+            // Check if the current waypoint is within bounds
             if (x_index >= 0 && x_index < static_cast<int>(costmap_->info.width) &&
                 y_index >= 0 && y_index < static_cast<int>(costmap_->info.height)) {
                 int index = y_index * costmap_->info.width + x_index;
     
-                // Check if the waypoint is in a collision-free zone
+                // Check if the current waypoint is in a collision-free zone
                 if (costmap_->data[index] <= obstacle_threshold_) {
-                    if (is_valid) {
-                        return {adjusted_waypoint, was_adjusted};
-                    }else{
-                        is_valid = true; // Mark as valid
+                    // Test the point 0.5 meters in front
+                    geometry_msgs::msg::PoseStamped forward_waypoint = adjusted_waypoint;
+                    forward_waypoint.pose.position.x += 0.5 * std::cos(yaw);
+                    forward_waypoint.pose.position.y += 0.5 * std::sin(yaw);
+    
+                    int forward_x_index = static_cast<int>((forward_waypoint.pose.position.x - costmap_->info.origin.position.x) / resolution);
+                    int forward_y_index = static_cast<int>((forward_waypoint.pose.position.y - costmap_->info.origin.position.y) / resolution);
+    
+                    if (forward_x_index >= 0 && forward_x_index < static_cast<int>(costmap_->info.width) &&
+                        forward_y_index >= 0 && forward_y_index < static_cast<int>(costmap_->info.height)) {
+                        int forward_index = forward_y_index * costmap_->info.width + forward_x_index;
+    
+                        // Check if the forward waypoint is in a collision-free zone
+                        if (costmap_->data[forward_index] <= obstacle_threshold_) {
+                            // Both current and forward points are valid
+                            return {forward_waypoint, was_adjusted};
+                        }
                     }
-                } else {
-                    is_valid = false; // Mark as invalid
-                    was_adjusted = true; // Mark as adjusted
                 }
             }
     
-            // Move the waypoint in the negative yaw direction by 0.5 meters
+            // Move both the current and forward waypoints 0.5 meters back
             adjusted_waypoint.pose.position.x -= 0.5 * std::cos(yaw);
             adjusted_waypoint.pose.position.y -= 0.5 * std::sin(yaw);
+            was_adjusted = true;
         }
     
         // If no collision-free zone is found, return an invalid waypoint
         adjusted_waypoint.header.frame_id = ""; // Mark as invalid
         return {adjusted_waypoint, was_adjusted};
     }
-
+    
     // Function to interpolate yaw between two poses
     tf2::Quaternion interpolateYaw(
         const geometry_msgs::msg::Pose &start_pose,
@@ -276,7 +285,7 @@ private:
         smoothed_path_pub_->publish(smoothed_path);
     }
 
-    // A* path planning function
+    // Plan path
     std::vector<geometry_msgs::msg::PoseStamped> planPath(
         const geometry_msgs::msg::PoseStamped &start,
         const geometry_msgs::msg::PoseStamped &goal) {
@@ -333,109 +342,132 @@ private:
         if (!invalid_flag) {
             return waypoints; // Return the waypoints if all are valid
         }
-
+        // If any waypoint is invalid, use A*
         std::vector<geometry_msgs::msg::PoseStamped> full_path;
-        geometry_msgs::msg::PoseStamped current_start = waypoints.front();
-        for (size_t i = 1; i < waypoints.size(); ++i) {
-            const auto &current_goal = waypoints[i];
-    
-            int start_x = static_cast<int>((current_start.pose.position.x - costmap_->info.origin.position.x) / resolution);
-            int start_y = static_cast<int>((current_start.pose.position.y - costmap_->info.origin.position.y) / resolution);
-            int goal_x = static_cast<int>((current_goal.pose.position.x - costmap_->info.origin.position.x) / resolution);
-            int goal_y = static_cast<int>((current_goal.pose.position.y - costmap_->info.origin.position.y) / resolution);
-    
-            // A* algorithm
-            std::priority_queue<PlannerNode, std::vector<PlannerNode>, std::greater<PlannerNode>> open_list;
-            std::unordered_map<int, int> came_from;
-            std::unordered_map<int, float> cost_so_far;
-    
-            open_list.push({start_x, start_y, 0});
-            cost_so_far[toIndex(start_x, start_y)] = 0;
-    
-            std::vector<int> dx = {1, -1, 0, 0};
-            std::vector<int> dy = {0, 0, 1, -1};
-    
-            while (!open_list.empty()) {
-                PlannerNode current = open_list.top();
-                open_list.pop();
-    
-                if (current.x == goal_x && current.y == goal_y) {
-                    break;
+
+        if (waypoints.size() < 2) {
+            RCLCPP_ERROR(this->get_logger(), "Not enough waypoints to plan a path");
+            return {};
+        }
+        
+        int start_x = static_cast<int>((start.pose.position.x - costmap_->info.origin.position.x) / resolution);
+        int start_y = static_cast<int>((start.pose.position.y - costmap_->info.origin.position.y) / resolution);
+        int goal_x = static_cast<int>((goal.pose.position.x - costmap_->info.origin.position.x) / resolution);
+        int goal_y = static_cast<int>((goal.pose.position.y - costmap_->info.origin.position.y) / resolution);
+        
+        // A* algorithm
+        std::priority_queue<PlannerNode, std::vector<PlannerNode>, std::greater<PlannerNode>> open_list;
+        std::unordered_map<int, int> came_from;
+        std::unordered_map<int, float> cost_so_far;
+        
+        open_list.push({start_x, start_y, 0});
+        cost_so_far[toIndex(start_x, start_y)] = 0;
+        
+        std::vector<int> dx = {1, -1, 0, 0};
+        std::vector<int> dy = {0, 0, 1, -1};
+        
+        while (!open_list.empty()) {
+            PlannerNode current = open_list.top();
+            open_list.pop();
+        
+            if (current.x == goal_x && current.y == goal_y) {
+                break;
+            }
+        
+            for (size_t j = 0; j < dx.size(); ++j) {
+                int next_x = current.x + dx[j];
+                int next_y = current.y + dy[j];
+        
+                if (next_x < 0 || next_y < 0 || next_x >= width || next_y >= height) {
+                    continue;
                 }
-    
-                for (size_t j = 0; j < dx.size(); ++j) {
-                    int next_x = current.x + dx[j];
-                    int next_y = current.y + dy[j];
-    
-                    if (next_x < 0 || next_y < 0 || next_x >= width || next_y >= height) {
-                        continue;
-                    }
-    
-                    int index = toIndex(next_x, next_y);
-                    if (costmap_->data[index] > obstacle_threshold_) {
-                        continue; // Skip this cell as it is an obstacle
-                    }
-    
-                    float new_cost = cost_so_far[toIndex(current.x, current.y)] + 1;
-                    if (!cost_so_far.count(index) || new_cost < cost_so_far[index]) {
-                        cost_so_far[index] = new_cost;
-                        float priority = new_cost + heuristic(next_x, next_y, goal_x, goal_y);
-                        open_list.push({next_x, next_y, priority});
-                        came_from[index] = toIndex(current.x, current.y);
-                    }
+        
+                int index = toIndex(next_x, next_y);
+                if (costmap_->data[index] > obstacle_threshold_) {
+                    continue; // Skip this cell as it is an obstacle
+                }
+        
+                float new_cost = cost_so_far[toIndex(current.x, current.y)] + 1;
+                if (!cost_so_far.count(index) || new_cost < cost_so_far[index]) {
+                    cost_so_far[index] = new_cost;
+                    float priority = new_cost + heuristic(next_x, next_y, goal_x, goal_y);
+                    open_list.push({next_x, next_y, priority});
+                    came_from[index] = toIndex(current.x, current.y);
                 }
             }
-    
-            // Reconstruct the path
-            std::vector<geometry_msgs::msg::PoseStamped> segment_path;
-            int current_index = toIndex(goal_x, goal_y);
-    
-            while (came_from.count(current_index)) {
-                int x = current_index % width;
-                int y = current_index / width;
-            
-                geometry_msgs::msg::PoseStamped pose;
-                pose.header.frame_id = costmap_->header.frame_id;
-            
-                // Calculate the x and y positions
-                pose.pose.position.x = x * resolution + costmap_->info.origin.position.x;
-                pose.pose.position.y = y * resolution + costmap_->info.origin.position.y;
-            
-                // Calculate the interpolation factor (t) based on the 2D distance
-                float dx = goal.pose.position.x - start.pose.position.x;
-                float dy = goal.pose.position.y - start.pose.position.y;
-                float dz = goal.pose.position.z - start.pose.position.z;
-                
-            
-                float distance_to_start_2d = std::sqrt(
-                    std::pow(pose.pose.position.x - start.pose.position.x, 2) +
-                    std::pow(pose.pose.position.y - start.pose.position.y, 2));
-                float total_distance_2d = std::sqrt(dx * dx + dy * dy);
-
-                // Ensure valid interpolation
-                if (total_distance_2d > 0.0) {
-                    float t = std::clamp(distance_to_start_2d / total_distance_2d, 0.0f, 1.0f); // Clamp t to [0, 1]
-                    pose.pose.position.z = start.pose.position.z + t * dz;
-                    
-                    tf2::Quaternion quaternion = interpolateYaw(start.pose, goal.pose, t);
-                    pose.pose.orientation = tf2::toMsg(quaternion);
-                } else {
-                    // If no horizontal movement, directly interpolate based on vertical distance
-                    pose.pose.position.z = start.pose.position.z + dz;
-                    pose.pose.orientation = goal.pose.orientation; 
-                }
-
-                segment_path.push_back(pose);
-                current_index = came_from[current_index];
+        }
+        
+        // Reconstruct the path
+        int current_index = toIndex(goal_x, goal_y);
+        
+        while (came_from.count(current_index)) {
+            int x = current_index % width;
+            int y = current_index / width;
+        
+            geometry_msgs::msg::PoseStamped pose;
+            pose.header.frame_id = costmap_->header.frame_id;
+        
+            pose.pose.position.x = x * resolution + costmap_->info.origin.position.x;
+            pose.pose.position.y = y * resolution + costmap_->info.origin.position.y;
+        
+            float dx = goal.pose.position.x - start.pose.position.x;
+            float dy = goal.pose.position.y - start.pose.position.y;
+            float dz = goal.pose.position.z - start.pose.position.z;
+        
+            float distance_to_start_2d = std::sqrt(
+                std::pow(pose.pose.position.x - start.pose.position.x, 2) +
+                std::pow(pose.pose.position.y - start.pose.position.y, 2));
+            float total_distance_2d = std::sqrt(dx * dx + dy * dy);
+        
+            if (total_distance_2d > 0.0) {
+                float t = std::clamp(distance_to_start_2d / total_distance_2d, 0.0f, 1.0f);
+                pose.pose.position.z = start.pose.position.z + t * dz;
+        
+                tf2::Quaternion quaternion = interpolateYaw(start.pose, goal.pose, t);
+                pose.pose.orientation = tf2::toMsg(quaternion);
+            } else {
+                pose.pose.position.z = start.pose.position.z + dz;
+                pose.pose.orientation = goal.pose.orientation;
             }
-    
-            segment_path.push_back(current_start);
-            std::reverse(segment_path.begin(), segment_path.end());
-            full_path.insert(full_path.end(), segment_path.begin(), segment_path.end());
-            current_start = current_goal;
+        
+            full_path.push_back(pose);
+            current_index = came_from[current_index];
+        }
+        
+        full_path.push_back(start);
+        std::reverse(full_path.begin(), full_path.end());
+
+        // Downsample the path
+        full_path = downsamplePath(full_path, interpolation_distance_*2);
+        
+        return full_path;
+    }
+
+    std::vector<geometry_msgs::msg::PoseStamped> downsamplePath(
+        const std::vector<geometry_msgs::msg::PoseStamped> &path, double min_distance) {
+        if (path.size() < 2) {
+            return path; // Not enough points to downsample
         }
     
-        return full_path;
+        std::vector<geometry_msgs::msg::PoseStamped> downsampled_path;
+        downsampled_path.push_back(path.front()); // Always include the first point
+    
+        for (size_t i = 1; i < path.size(); ++i) {
+            const auto &last_point = downsampled_path.back().pose.position;
+            const auto &current_point = path[i].pose.position;
+    
+            // Calculate the Euclidean distance between the last added point and the current point
+            double distance = std::sqrt(
+                std::pow(current_point.x - last_point.x, 2) +
+                std::pow(current_point.y - last_point.y, 2) +
+                std::pow(current_point.z - last_point.z, 2));
+    
+            if (distance >= min_distance) {
+                downsampled_path.push_back(path[i]); // Add the point if it's far enough
+            }
+        }
+    
+        return downsampled_path;
     }
     
 

@@ -29,7 +29,7 @@ def generate_launch_description():
                 {"frame_id": "base_link"},          # Map centered at base_link
                 {"interpolation_distance": 3.0},    # Interpolation distance
                 {"costmap_topic": "/local_costmap/costmap"},
-                {"waypoints_topic": "/oscep/waypoints"},
+                {"waypoints_topic": "/osep/viewpoints"},
                 {"path_planner_prefix": "/planner"},
             ]
         ),
