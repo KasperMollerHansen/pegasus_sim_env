@@ -457,6 +457,11 @@ private:
         
         // Reconstruct the path
         int current_index = toIndex(goal_x, goal_y);
+        float total_distance_2d = cost_so_far[toIndex(goal_x, goal_y)];
+        if (total_distance_2d <= 0.0f) {
+            RCLCPP_ERROR(this->get_logger(), "Failed to calculate a valid path distance.");
+            return {}; // Return an empty path if no valid path exists
+        }
         
         while (came_from.count(current_index)) {
             int x = current_index % width;
@@ -468,14 +473,9 @@ private:
             pose.pose.position.x = x * resolution + costmap_->info.origin.position.x;
             pose.pose.position.y = y * resolution + costmap_->info.origin.position.y;
         
-            float dx = goal.pose.position.x - start.pose.position.x;
-            float dy = goal.pose.position.y - start.pose.position.y;
             float dz = goal.pose.position.z - start.pose.position.z;
         
-            float distance_to_start_2d = std::sqrt(
-                std::pow(pose.pose.position.x - start.pose.position.x, 2) +
-                std::pow(pose.pose.position.y - start.pose.position.y, 2));
-            float total_distance_2d = std::sqrt(dx * dx + dy * dy);
+            float distance_to_start_2d = cost_so_far[current_index];
         
             if (total_distance_2d > 0.0) {
                 float t = std::clamp(distance_to_start_2d / total_distance_2d, 0.0f, 1.0f);
