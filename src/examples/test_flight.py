@@ -21,6 +21,12 @@ class TestFlight(Node):
     def __init__(self) -> None:
         super().__init__("offboard_control_takeoff_and_land")
 
+        # Declare the 'start' parameter with a default value
+        self.declare_parameter("start", True)
+
+        # Get the value of the 'start' parameter
+        self.start = self.get_parameter("start").get_parameter_value().bool_value
+
         # Configure QoS profile to match AStarPlanner
         qos_profile = QoSProfile(
             reliability=ReliabilityPolicy.RELIABLE,  # Matches AStarPlanner
@@ -66,7 +72,7 @@ class TestFlight(Node):
         self.vehicle_status = VehicleStatus()
         self.takeoff_height = -5.0
         self.current_checkpoint = 0
-        self.coordinates = generate_coordinates(center_x=200, center_y=0, radius=20, num_points=8, height=120)
+        self.coordinates = generate_coordinates(center_x=200, center_y=0, radius=20, num_points=8, height=120, start=self.start)
         self.center = [200, 0]  # Center of the circle
         self.yaw = 0.0
         self.number_of_waypoints = 5
@@ -171,7 +177,7 @@ def calculate_angle(point, center):
     """Calculates the angle of a point relative to the center."""
     return math.atan2(point[1] - center[1], point[0] - center[0])
 
-def generate_coordinates(center_x=150, center_y=0, center_z=0, radius=75, num_points=90, height=125):
+def generate_coordinates(center_x=150, center_y=0, center_z=0, radius=75, num_points=90, height=125, start=True):
     """Generates coordinates in a circle, starting from the closest point to [0, 0, 50]."""
     initial_point = [0.0, 0.0, 100.0]
     initial_point_1 = [5.0, 0.0, 105.0]
@@ -185,7 +191,10 @@ def generate_coordinates(center_x=150, center_y=0, center_z=0, radius=75, num_po
     # Arrange the points in circular order starting from the closest
     ordered_points = generated_points[closest_point_index:] + generated_points[:closest_point_index]
 
-    coordinates = [initial_point] + [initial_point_1] + [ordered_points[0]] + ordered_points[1:] + [initial_point]
+    if start:
+        coordinates = [initial_point] + [initial_point_1] + [ordered_points[0]] + ordered_points[1:] + [initial_point]
+    else:
+        coordinates = ordered_points
 
     return coordinates
 
