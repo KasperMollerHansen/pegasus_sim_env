@@ -93,6 +93,7 @@ private:
     double interpolation_distance_;
     rclcpp::TimerBase::SharedPtr ground_truth_timer_;
     nav_msgs::msg::Path ground_truth_trajectory_;
+    bool path_invalid_flag_ = false;
 
     void costmapCallback(const nav_msgs::msg::OccupancyGrid::SharedPtr msg) {
         costmap_ = msg;
@@ -300,7 +301,8 @@ private:
         nav_msgs::msg::Path raw_path;
         raw_path.header.stamp = this->now();
         raw_path.header.frame_id = costmap_->header.frame_id;
-        bool path_invalid_flag = false;
+        
+        nav_msgs::msg::Path smoothed_path;
 
         for (size_t i = 0; i < init_path.poses.size() - 1; ++i) {
             const auto &start = init_path.poses[i];
@@ -312,15 +314,16 @@ private:
             // Fail-safe: Check if the segment path is empty
             if (segment_path.empty()) {
                 RCLCPP_ERROR(this->get_logger(), "Failed to plan a valid path segment between waypoints %zu and %zu.", i, i + 1);
-                path_invalid_flag = true; // Mark the path as invalid
+                path_invalid_flag_ = true; // Mark the path as invalid
                 break; // Stop further planning
             }
+            path_invalid_flag_ = false; 
         
             // Add the segment path to the raw path
             raw_path.poses.insert(raw_path.poses.end(), segment_path.begin(), segment_path.end());
         }
 
-        if (path_invalid_flag) {
+        if (path_invalid_flag_) {
             RCLCPP_ERROR(this->get_logger(), "Path planning failed. Marking the path as invalid and aborting.");
             return; // Abort without publishing
         }
@@ -331,7 +334,6 @@ private:
         // Smooth the raw path
         std::vector<geometry_msgs::msg::PoseStamped> smoothed_poses = smoothPath(raw_path.poses, interpolation_distance_);
 
-        nav_msgs::msg::Path smoothed_path;
         smoothed_path.header.stamp = this->now(); // Update the timestamp
         smoothed_path.header.frame_id = costmap_->header.frame_id; // Set the frame ID
         smoothed_path.poses = smoothed_poses;
