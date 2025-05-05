@@ -158,46 +158,55 @@ private:
             return {adjusted_waypoint, was_adjusted};
         }
     
-        // Extract yaw from the waypoint's quaternion only after the bounds check
+        // Extract yaw from the waypoint's quaternion
         tf2::Quaternion quat;
         tf2::fromMsg(adjusted_waypoint.pose.orientation, quat);
         double yaw = tf2::getYaw(quat);
-        
-        bool is_valid = false;
-        // Check if the waypoint is within bounds
+    
         for (int attempt = 0; attempt < max_attempts; ++attempt) {
-            // Convert waypoint position to costmap indices
+            // Convert current waypoint position to costmap indices
             int x_index = static_cast<int>((adjusted_waypoint.pose.position.x - costmap_->info.origin.position.x) / resolution);
             int y_index = static_cast<int>((adjusted_waypoint.pose.position.y - costmap_->info.origin.position.y) / resolution);
     
-            // Check if the waypoint is within bounds
+            // Check if the current waypoint is within bounds
             if (x_index >= 0 && x_index < static_cast<int>(costmap_->info.width) &&
                 y_index >= 0 && y_index < static_cast<int>(costmap_->info.height)) {
                 int index = y_index * costmap_->info.width + x_index;
     
-                // Check if the waypoint is in a collision-free zone
+                // Check if the current waypoint is in a collision-free zone
                 if (costmap_->data[index] <= obstacle_threshold_) {
-                    if (is_valid) {
-                        return {adjusted_waypoint, was_adjusted};
-                    }else{
-                        is_valid = true; // Mark as valid
+                    // Test the point 0.5 meters in front
+                    geometry_msgs::msg::PoseStamped forward_waypoint = adjusted_waypoint;
+                    forward_waypoint.pose.position.x += 0.5 * std::cos(yaw);
+                    forward_waypoint.pose.position.y += 0.5 * std::sin(yaw);
+    
+                    int forward_x_index = static_cast<int>((forward_waypoint.pose.position.x - costmap_->info.origin.position.x) / resolution);
+                    int forward_y_index = static_cast<int>((forward_waypoint.pose.position.y - costmap_->info.origin.position.y) / resolution);
+    
+                    if (forward_x_index >= 0 && forward_x_index < static_cast<int>(costmap_->info.width) &&
+                        forward_y_index >= 0 && forward_y_index < static_cast<int>(costmap_->info.height)) {
+                        int forward_index = forward_y_index * costmap_->info.width + forward_x_index;
+    
+                        // Check if the forward waypoint is in a collision-free zone
+                        if (costmap_->data[forward_index] <= obstacle_threshold_) {
+                            // Both current and forward points are valid
+                            return {forward_waypoint, was_adjusted};
+                        }
                     }
-                } else {
-                    is_valid = false; // Mark as invalid
-                    was_adjusted = true; // Mark as adjusted
                 }
             }
     
-            // Move the waypoint in the negative yaw direction by 0.5 meters
+            // Move both the current and forward waypoints 0.5 meters back
             adjusted_waypoint.pose.position.x -= 0.5 * std::cos(yaw);
             adjusted_waypoint.pose.position.y -= 0.5 * std::sin(yaw);
+            was_adjusted = true;
         }
     
         // If no collision-free zone is found, return an invalid waypoint
         adjusted_waypoint.header.frame_id = ""; // Mark as invalid
         return {adjusted_waypoint, was_adjusted};
     }
-
+    
     // Function to interpolate yaw between two poses
     tf2::Quaternion interpolateYaw(
         const geometry_msgs::msg::Pose &start_pose,
