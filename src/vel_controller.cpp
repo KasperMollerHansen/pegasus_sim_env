@@ -95,6 +95,7 @@ private:
     double min_velocity_;
     double max_acceleration_;
     double max_angle_change_;
+    double normalizeAngle(double angle);
 };
 
 /**
@@ -183,12 +184,21 @@ void OffboardControl::publish_vehicle_command(uint16_t command, float param1, fl
     // RCLCPP_INFO(this->get_logger(), "Published Vehicle Command: %d", command);
 }
 
+// Helper function to normalize angles to the range [-π, π]
+double OffboardControl::normalizeAngle(double angle) {
+    while (angle > M_PI) angle -= 2.0 * M_PI;
+    while (angle < -M_PI) angle += 2.0 * M_PI;
+    return angle;
+}
+
 void OffboardControl::process_path(const Path::SharedPtr msg)
 { 
     static Eigen::Vector3d previous_published_velocity(0.0, 0.0, 0.0); // Track the previous velocity
     static double previous_velocity = 0.0; // Track the previous speed
+    static double previous_yaw = 0.0; // Track the previous yaw
     static double dt = 1; // Time difference between updates (can be adjusted dynamically)
     static double delta_vel = min_velocity_ / 20.0; // Velocity change threshold
+    static double delta_yaw = 0.1; // Yaw change threshold
 
     // TF2 setup
     geometry_msgs::msg::TransformStamped transform_stamped;
@@ -289,14 +299,22 @@ void OffboardControl::process_path(const Path::SharedPtr msg)
         double roll_next, pitch_next, yaw_next;
         m_next.getRPY(roll_next, pitch_next, yaw_next);
 
+        // Adjust yaw_next with symmetry handling
+        yaw_next = normalizeAngle(yaw_next);
+        previous_yaw = normalizeAngle(previous_yaw);
+
+        double yaw_diff = normalizeAngle(yaw_next - previous_yaw);
+
+        if (yaw_diff > delta_yaw) {
+            yaw_next = normalizeAngle(previous_yaw + delta_yaw);
+        } else if (yaw_diff < -delta_yaw) {
+            yaw_next = normalizeAngle(previous_yaw - delta_yaw);
+        }
+
+        previous_yaw = yaw_next;
+
         // Create and publish the TrajectorySetpoint message for velocity control
         TrajectorySetpoint setpoint_msg{};
-        // setpoint_msg.position = {
-        //     static_cast<float>(pos1.y()), // y
-        //     static_cast<float>(pos1.x()), // x
-        //     static_cast<float>(pos1.z()) // -z
-        // };
-
         setpoint_msg.position = {NAN, NAN, NAN};
         
         setpoint_msg.velocity = {
