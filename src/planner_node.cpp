@@ -300,6 +300,7 @@ private:
         nav_msgs::msg::Path raw_path;
         raw_path.header.stamp = this->now();
         raw_path.header.frame_id = costmap_->header.frame_id;
+        bool path_invalid_flag = false;
 
         for (size_t i = 0; i < init_path.poses.size() - 1; ++i) {
             const auto &start = init_path.poses[i];
@@ -308,9 +309,22 @@ private:
             // Plan the path for the current segment
             auto segment_path = planPath(start, goal);
 
+            // Fail-safe: Check if the segment path is empty
+            if (segment_path.empty()) {
+                RCLCPP_ERROR(this->get_logger(), "Failed to plan a valid path segment between waypoints %zu and %zu.", i, i + 1);
+                path_invalid_flag = true; // Mark the path as invalid
+                break; // Stop further planning
+            }
+        
             // Add the segment path to the raw path
             raw_path.poses.insert(raw_path.poses.end(), segment_path.begin(), segment_path.end());
         }
+
+        if (path_invalid_flag) {
+            RCLCPP_ERROR(this->get_logger(), "Path planning failed. Marking the path as invalid and aborting.");
+            return; // Abort without publishing
+        }
+
         // Publish the raw path
         raw_path_pub_->publish(raw_path);
 
@@ -476,6 +490,12 @@ private:
         
         full_path.push_back(start);
         std::reverse(full_path.begin(), full_path.end());
+
+        // Check if the path is valid
+        if (full_path.size() <= 2) {
+            RCLCPP_ERROR(this->get_logger(), "A* failed to find a valid path. Only start and end points are available.");
+            return {}; // Return an empty path to indicate failure
+        }
 
         // Downsample the path
         full_path = downsamplePath(full_path, interpolation_distance_*2);
