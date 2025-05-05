@@ -62,7 +62,7 @@ public:
             std::bind(&PathPlanner::waypointsCallback, this, std::placeholders::_1));
 
         // Publisher for the planned path
-        waypoints_adjusted_pub_ = this->create_publisher<nav_msgs::msg::Path>(path_planner_prefix + "/waypoints_adjusted", 10);
+        viewpoints_adjusted_pub_ = this->create_publisher<nav_msgs::msg::Path>(path_planner_prefix + "/viewpoints_adjusted", 10);
         raw_path_pub_ = this->create_publisher<nav_msgs::msg::Path>(path_planner_prefix + "/raw_path", 10);
         down_sampled_path_pub_ = this->create_publisher<nav_msgs::msg::Path>(path_planner_prefix + "/downsampled_path", 10);
         smoothed_path_pub_ = this->create_publisher<nav_msgs::msg::Path>(path_planner_prefix + "/smoothed_path", 10);
@@ -72,7 +72,7 @@ public:
 private:
     rclcpp::Subscription<nav_msgs::msg::OccupancyGrid>::SharedPtr costmap_sub_;
     rclcpp::Subscription<nav_msgs::msg::Path>::SharedPtr waypoints_sub_;
-    rclcpp::Publisher<nav_msgs::msg::Path>::SharedPtr waypoints_adjusted_pub_;
+    rclcpp::Publisher<nav_msgs::msg::Path>::SharedPtr viewpoints_adjusted_pub_;
     rclcpp::Publisher<nav_msgs::msg::Path>::SharedPtr raw_path_pub_;
     rclcpp::Publisher<nav_msgs::msg::Path>::SharedPtr down_sampled_path_pub_;
     rclcpp::Publisher<nav_msgs::msg::Path>::SharedPtr smoothed_path_pub_;
@@ -122,7 +122,7 @@ private:
             }
         }
         // Publish all waypoints (including invalid ones)
-        waypoints_adjusted_pub_->publish(all_adjusted_waypoints);
+        viewpoints_adjusted_pub_->publish(all_adjusted_waypoints);
     }
 
     geometry_msgs::msg::PoseStamped getCurrentPosition() {
