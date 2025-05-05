@@ -60,7 +60,7 @@ class TestFlight(Node):
 
         self.waypoints_adjustment = self.create_subscription(
             Path,
-            "/planner/waypoints_adjusted",
+            "/planner/viewpoints_adjusted",
             self.adjust_waypoints_callback,
             qos_profile,
         )

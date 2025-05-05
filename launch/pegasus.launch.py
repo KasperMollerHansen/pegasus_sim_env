@@ -31,6 +31,7 @@ def generate_launch_description():
                 {"costmap_topic": "/local_costmap/costmap"},
                 {"waypoints_topic": "/osep/viewpoints"},
                 {"path_planner_prefix": "/planner"},
+                {"ground_truth_update_interval": 4000}, # Update interval for ground truth (miliseconds)
             ]
         ),
         Node(

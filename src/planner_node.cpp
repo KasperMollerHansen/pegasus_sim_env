@@ -35,6 +35,7 @@ public:
         this->declare_parameter<std::string>("costmap_topic", "/local_costmap/costmap");
         this->declare_parameter<std::string>("waypoints_topic", "/oscep/waypoints");
         this->declare_parameter<std::string>("path_planner_prefix", "/planner");
+        this->declare_parameter<int>("ground_truth_update_interval", 2000); // in milliseconds
 
         obstacle_threshold_ = this->get_parameter("obstacle_threshold").as_int();
         frame_id_ = this->get_parameter("frame_id").as_string();
@@ -42,9 +43,17 @@ public:
         std::string costmap_topic = this->get_parameter("costmap_topic").as_string();
         std::string waypoints_topic = this->get_parameter("waypoints_topic").as_string();
         std::string path_planner_prefix = this->get_parameter("path_planner_prefix").as_string();
+        int ground_truth_update_interval = this->get_parameter("ground_truth_update_interval").as_int();
 
         tf_buffer_ = std::make_shared<tf2_ros::Buffer>(this->get_clock());
         tf_listener_ = std::make_shared<tf2_ros::TransformListener>(*tf_buffer_);
+
+        ground_truth_trajectory_.header.frame_id = frame_id_;
+
+        // Set up a timer to update the ground truth trajectory at a fixed interval (e.g., 2000ms)
+        ground_truth_timer_ = this->create_wall_timer(
+            std::chrono::milliseconds(ground_truth_update_interval), // Adjust the interval as needed
+            std::bind(&PathPlanner::updateGroundTruthTrajectory, this));
 
         // QoS profile for subscriptions
         rclcpp::QoS qos_profile(rclcpp::KeepLast(1));
@@ -64,7 +73,6 @@ public:
         // Publisher for the planned path
         viewpoints_adjusted_pub_ = this->create_publisher<nav_msgs::msg::Path>(path_planner_prefix + "/viewpoints_adjusted", 10);
         raw_path_pub_ = this->create_publisher<nav_msgs::msg::Path>(path_planner_prefix + "/raw_path", 10);
-        down_sampled_path_pub_ = this->create_publisher<nav_msgs::msg::Path>(path_planner_prefix + "/downsampled_path", 10);
         smoothed_path_pub_ = this->create_publisher<nav_msgs::msg::Path>(path_planner_prefix + "/smoothed_path", 10);
         ground_truth_trajectory_pub_ = this->create_publisher<nav_msgs::msg::Path>(path_planner_prefix + "/ground_truth_trajectory", 10);
     }
@@ -74,7 +82,6 @@ private:
     rclcpp::Subscription<nav_msgs::msg::Path>::SharedPtr waypoints_sub_;
     rclcpp::Publisher<nav_msgs::msg::Path>::SharedPtr viewpoints_adjusted_pub_;
     rclcpp::Publisher<nav_msgs::msg::Path>::SharedPtr raw_path_pub_;
-    rclcpp::Publisher<nav_msgs::msg::Path>::SharedPtr down_sampled_path_pub_;
     rclcpp::Publisher<nav_msgs::msg::Path>::SharedPtr smoothed_path_pub_;
     rclcpp::Publisher<nav_msgs::msg::Path>::SharedPtr ground_truth_trajectory_pub_;
     std::shared_ptr<tf2_ros::Buffer> tf_buffer_;
@@ -84,6 +91,8 @@ private:
     int obstacle_threshold_;
     std::string frame_id_;
     double interpolation_distance_;
+    rclcpp::TimerBase::SharedPtr ground_truth_timer_;
+    nav_msgs::msg::Path ground_truth_trajectory_;
 
     void costmapCallback(const nav_msgs::msg::OccupancyGrid::SharedPtr msg) {
         costmap_ = msg;
@@ -125,6 +134,7 @@ private:
         viewpoints_adjusted_pub_->publish(all_adjusted_waypoints);
     }
 
+
     geometry_msgs::msg::PoseStamped getCurrentPosition() {
         geometry_msgs::msg::PoseStamped current_position;
     
@@ -143,6 +153,36 @@ private:
         }
     
         return current_position;
+    }
+
+    void updateGroundTruthTrajectory() {
+        // Ensure the costmap is initialized
+        if (!costmap_) {
+            RCLCPP_WARN(this->get_logger(), "Costmap is not initialized, skipping update");
+            return;
+        }
+    
+        // Get the current position
+        geometry_msgs::msg::PoseStamped current_position = getCurrentPosition();
+    
+        // Check if the current position is valid
+        if (current_position.header.frame_id.empty()) {
+            RCLCPP_WARN(this->get_logger(), "Invalid current position, skipping update");
+            return;
+        }
+    
+        // Update the header of the ground truth trajectory
+        ground_truth_trajectory_.header.frame_id = costmap_->header.frame_id; // Ensure frame ID matches the costmap
+        ground_truth_trajectory_.header.stamp = this->now(); // Update the timestamp
+    
+        // Append the current position to the trajectory
+        ground_truth_trajectory_.poses.push_back(current_position);
+    
+        // Publish the updated trajectory
+        ground_truth_trajectory_pub_->publish(ground_truth_trajectory_);
+    
+        // Log for debugging
+        RCLCPP_INFO(this->get_logger(), "Appended current position to ground truth trajectory and published");
     }
 
     // Function to check and adjust waypoints for collision-free zones
