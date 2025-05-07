@@ -16,7 +16,7 @@ def generate_launch_description():
                 {"global_map_size": 1600.0},        # Global map size (1600 m x 1600 m)
                 {"frame_id": "base_link"},          # Map centered at base_link
                 {"safety_distance_min": 8.0},       # Minimum safety distance
-                {"safety_distance_max": 12.0},      # Maximum safety distance    
+                {"safety_distance_max": 14.0},      # Maximum safety distance    
             ]
         ),
         Node(
@@ -44,7 +44,7 @@ def generate_launch_description():
                 {"frame_id": "base_link"},          # Map centered at base_link
                 {"max_velocity": 10.0},             # Maximum velocity
                 {"min_velocity": 0.5},              # Minimum velocity
-                {"max_acceleration": 0.1},          # Acceleration
+                {"max_acceleration": 0.2},          # Acceleration
                 {"max_angle_change": math.pi / 18},  # Maximum angle change (30 degrees)
                 {"path_topic": "/planner/smoothed_path"}, # Path topic
             ]

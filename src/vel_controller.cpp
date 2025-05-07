@@ -199,7 +199,7 @@ void OffboardControl::process_path(const Path::SharedPtr msg)
     static double dt = 1; // Time difference between updates (can be adjusted dynamically)
     static double delta_vel = min_velocity_ / 10.0; // Velocity change threshold
     static double delta_yaw = 0.1; // Yaw change threshold
-    static double max_yaw_offset_ = M_PI / 2.0; // Maximum yaw offset allowed
+    static double max_yaw_offset_ = M_PI / 1.8; // Maximum yaw offset allowed (100 degrees)
 
     // TF2 setup
     geometry_msgs::msg::TransformStamped transform_stamped;
@@ -216,12 +216,12 @@ void OffboardControl::process_path(const Path::SharedPtr msg)
         transform_stamped.transform.translation.y,
         transform_stamped.transform.translation.z);
 
-    if (msg->poses.size() >= 2) { // Need at least two poses for velocity and yaw from pose 1
+    if (msg->poses.size() >= 2) { // Need at least two poses
         RCLCPP_INFO(this->get_logger(), "Received Path with %zu poses", msg->poses.size());
 
-        int straight_line_points = countStraightLinePoints(msg->poses);
+        int straight_line_points = std::max(1, countStraightLinePoints(msg->poses));
         RCLCPP_INFO(this->get_logger(), "Number of points on a straight line: %d", straight_line_points);
-        double velocity = min_velocity_ + 2*delta_vel * straight_line_points;
+        double velocity = min_velocity_ + min_velocity_ * straight_line_points / 2.0;
 
         
         // Clamp the velocity change to a
@@ -242,6 +242,9 @@ void OffboardControl::process_path(const Path::SharedPtr msg)
         const auto &pose0 = msg->poses[0];
         const auto &pose1 = msg->poses[1];
 
+        // Calculate the index for posex
+        int posex_index = std::clamp(straight_line_points / 2, 0, static_cast<int>(msg->poses.size() - 1));
+
         // Calculate velocity vector from pose0 to pose1
         // Transform pose1 to ned frame
         Eigen::Vector3d pos0(pose0.pose.position.x, pose0.pose.position.y, pose0.pose.position.z);
@@ -255,6 +258,10 @@ void OffboardControl::process_path(const Path::SharedPtr msg)
         } else {
             velocity_desired_world = (pos1 - pos_tf) / dt; // Move to next pose
             pose_yaw = &msg->poses[1];
+        }
+
+        if (straight_line_points > 20){  //Quick fix to advoid yaw rotation
+            pose_yaw = &msg->poses[posex_index]; // Use the pose at the calculated index
         }
 
         velocity_desired_world = velocity_desired_world / velocity_desired_world.norm() * velocity;
@@ -304,7 +311,7 @@ void OffboardControl::process_path(const Path::SharedPtr msg)
         double roll_next, pitch_next, yaw_next;
         m_next.getRPY(roll_next, pitch_next, yaw_next);
 
-        RCLCPP_WARN(this->get_logger(), "Yaw: %f", yaw_next);
+        RCLCPP_INFO(this->get_logger(), "Yaw: %f", yaw_next);
         
         // Adjust yaw_next with symmetry handling
         yaw_next = normalizeAngle(yaw_next);
@@ -321,7 +328,7 @@ void OffboardControl::process_path(const Path::SharedPtr msg)
         double velocity_magnitude_xy = velocity_vector.norm();
 
         // Only adjust yaw if the x-y velocity magnitude is above a threshold
-        if (velocity_magnitude_xy > 1.0) { // Threshold to avoid issues with small movements
+        if (velocity_magnitude_xy > 0.5) { // Threshold to avoid issues with small movements
             velocity_vector.normalize(); // Normalize the velocity vector
 
             // Compute the angle between the yaw vector and the velocity vector
