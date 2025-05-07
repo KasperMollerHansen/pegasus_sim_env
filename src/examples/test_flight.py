@@ -180,7 +180,7 @@ def calculate_angle(point, center):
 def generate_coordinates(center_x=150, center_y=0, center_z=0, radius=75, num_points=90, height=125, start=True):
     """Generates coordinates in a circle, starting from the closest point to [0, 0, 50]."""
     initial_point = [0.0, 0.0, 100.0]
-    initial_point_1 = [5.0, 0.0, 105.0]
+    initial_point_1 = [20.0, 0.0, 105.0]
 
     generated_points = generate_points_in_radius(center_x, center_y, center_z, radius, num_points, height)
 

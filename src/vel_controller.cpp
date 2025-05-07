@@ -303,6 +303,26 @@ void OffboardControl::process_path(const Path::SharedPtr msg)
         yaw_next = normalizeAngle(yaw_next);
         previous_yaw = normalizeAngle(previous_yaw);
 
+        // Ensure yaw is aligned with the velocity vector within 90 degrees
+        Eigen::Vector3d velocity_direction = velocity_desired_world.normalized();
+        double velocity_magnitude = velocity_desired_world.norm();
+
+        // Only adjust yaw if the velocity magnitude is above a threshold
+        if (velocity_magnitude > 5e-1) { // Threshold to avoid issues with small movements
+            double velocity_yaw = std::atan2(velocity_direction.y(), velocity_direction.x());
+            double angle_to_velocity = normalizeAngle(yaw_next - velocity_yaw);
+
+            if (std::abs(angle_to_velocity) > M_PI / 2.0) {
+                RCLCPP_WARN(this->get_logger(), "Yaw exceeds 90 degrees relative to velocity vector. Adjusting yaw.");
+                if (angle_to_velocity > 0) {
+                    yaw_next = normalizeAngle(velocity_yaw + M_PI / 2.0);
+                } else {
+                    yaw_next = normalizeAngle(velocity_yaw - M_PI / 2.0);
+                }
+            }
+        }
+
+
         double yaw_diff = normalizeAngle(yaw_next - previous_yaw);
 
         if (yaw_diff > delta_yaw) {
