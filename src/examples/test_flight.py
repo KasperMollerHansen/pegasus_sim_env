@@ -148,7 +148,7 @@ class TestFlight(Node):
             distance = np.linalg.norm(current - target)
             self.get_logger().info(f"Distance to point {i}: {distance}")
 
-            if distance < 0.5:  # Threshold for being "close"
+            if distance < 1.0:  # Threshold for being "close"
                 self.get_logger().info(f"Reached point {i}: {target}")
                 self.current_checkpoint += i+1  # Update checkpoint to the next point
                 self.last_update_time = current_time  # Update the last update time
