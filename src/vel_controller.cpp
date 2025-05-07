@@ -199,6 +199,7 @@ void OffboardControl::process_path(const Path::SharedPtr msg)
     static double dt = 1; // Time difference between updates (can be adjusted dynamically)
     static double delta_vel = min_velocity_ / 20.0; // Velocity change threshold
     static double delta_yaw = 0.1; // Yaw change threshold
+    static double max_yaw_offset_ = 2 * M_PI / 3.0; // Maximum yaw offset allowed
 
     // TF2 setup
     geometry_msgs::msg::TransformStamped transform_stamped;
@@ -304,24 +305,39 @@ void OffboardControl::process_path(const Path::SharedPtr msg)
         previous_yaw = normalizeAngle(previous_yaw);
 
         // Ensure yaw is aligned with the velocity vector within 90 degrees
-        Eigen::Vector3d velocity_direction = velocity_desired_world.normalized();
-        double velocity_magnitude = velocity_desired_world.norm();
+        double velocity_magnitude_xy = std::sqrt(
+            velocity_desired_world.x() * velocity_desired_world.x() +
+            velocity_desired_world.y() * velocity_desired_world.y()
+        );
 
-        // Only adjust yaw if the velocity magnitude is above a threshold
-        if (velocity_magnitude > 5e-1) { // Threshold to avoid issues with small movements
-            double velocity_yaw = std::atan2(velocity_direction.y(), velocity_direction.x());
+        // Only adjust yaw if the x-y velocity magnitude is above a threshold
+        if (velocity_magnitude_xy > 1.0) { // Threshold to avoid issues with small movements
+            Eigen::Vector3d velocity_direction_xy(
+                velocity_desired_world.x() / velocity_magnitude_xy,
+                velocity_desired_world.y() / velocity_magnitude_xy,
+                0.0 // Ignore z-component for yaw alignment
+            );
+
+            double velocity_yaw = std::atan2(velocity_direction_xy.y(), velocity_direction_xy.x());
             double angle_to_velocity = normalizeAngle(yaw_next - velocity_yaw);
 
+            // Handle cases where yaw is opposite to the velocity vector
             if (std::abs(angle_to_velocity) > M_PI / 2.0) {
-                RCLCPP_WARN(this->get_logger(), "Yaw exceeds 90 degrees relative to velocity vector. Adjusting yaw.");
+                RCLCPP_WARN(this->get_logger(), "Yaw is opposite to velocity vector. Adjusting yaw.");
                 if (angle_to_velocity > 0) {
                     yaw_next = normalizeAngle(velocity_yaw + M_PI / 2.0);
                 } else {
                     yaw_next = normalizeAngle(velocity_yaw - M_PI / 2.0);
                 }
+            } else if (std::abs(angle_to_velocity) > max_yaw_offset_) {
+                RCLCPP_WARN(this->get_logger(), "Yaw exceeds max allowable offset. Adjusting yaw.");
+                if (angle_to_velocity > 0) {
+                    yaw_next = normalizeAngle(velocity_yaw + max_yaw_offset_);
+                } else {
+                    yaw_next = normalizeAngle(velocity_yaw - max_yaw_offset_);
+                }
             }
         }
-
 
         double yaw_diff = normalizeAngle(yaw_next - previous_yaw);
 
