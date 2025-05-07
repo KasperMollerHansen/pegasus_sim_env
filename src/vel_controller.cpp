@@ -199,7 +199,7 @@ void OffboardControl::process_path(const Path::SharedPtr msg)
     static double dt = 1; // Time difference between updates (can be adjusted dynamically)
     static double delta_vel = min_velocity_ / 20.0; // Velocity change threshold
     static double delta_yaw = 0.1; // Yaw change threshold
-    static double max_yaw_offset_ = 2 * M_PI / 3.0; // Maximum yaw offset allowed
+    static double max_yaw_offset_ = M_PI / 2.0; // Maximum yaw offset allowed
 
     // TF2 setup
     geometry_msgs::msg::TransformStamped transform_stamped;
@@ -210,11 +210,11 @@ void OffboardControl::process_path(const Path::SharedPtr msg)
         RCLCPP_WARN(this->get_logger(), "Could not transform base_link to odom: %s", ex.what());
         return;
     }
-    // Transform to ned frame
+    // Transform_pos
     Eigen::Vector3d pos_tf(
-        transform_stamped.transform.translation.y,
         transform_stamped.transform.translation.x,
-        -transform_stamped.transform.translation.z);
+        transform_stamped.transform.translation.y,
+        transform_stamped.transform.translation.z);
 
     if (msg->poses.size() >= 2) { // Need at least two poses for velocity and yaw from pose 1
         RCLCPP_INFO(this->get_logger(), "Received Path with %zu poses", msg->poses.size());
@@ -237,20 +237,24 @@ void OffboardControl::process_path(const Path::SharedPtr msg)
         }
         previous_velocity = velocity;
 
+        const geometry_msgs::msg::PoseStamped* pose_yaw = nullptr; // Declare a pointer to hold the selected pose
+        // Get the first two poses
         const auto &pose0 = msg->poses[0];
         const auto &pose1 = msg->poses[1];
 
         // Calculate velocity vector from pose0 to pose1
         // Transform pose1 to ned frame
-        Eigen::Vector3d pos0(pose0.pose.position.y, pose0.pose.position.x, -pose0.pose.position.z);
-        Eigen::Vector3d pos1(pose1.pose.position.y, pose1.pose.position.x, -pose1.pose.position.z);
+        Eigen::Vector3d pos0(pose0.pose.position.x, pose0.pose.position.y, pose0.pose.position.z);
+        Eigen::Vector3d pos1(pose1.pose.position.x, pose1.pose.position.y, pose1.pose.position.z);
         
         Eigen::Vector3d velocity_desired_world; // Declare the variable before the if-else block
 
         if ((pos_tf - pos0).norm() > interpolation_distance_/2.0) {
             velocity_desired_world = (pos0 - pos_tf) / dt; // Move to pose0 if pose0 diverges from tf
+            pose_yaw = &msg->poses[0];
         } else {
             velocity_desired_world = (pos1 - pos_tf) / dt; // Move to next pose
+            pose_yaw = &msg->poses[1];
         }
 
         velocity_desired_world = velocity_desired_world / velocity_desired_world.norm() * velocity;
@@ -288,54 +292,53 @@ void OffboardControl::process_path(const Path::SharedPtr msg)
         double acceleration_magnitude = acceleration_desired_world.norm();
         if (acceleration_magnitude > max_acceleration_ && acceleration_magnitude > 1e-6) {
             acceleration_desired_world = acceleration_desired_world / acceleration_magnitude * max_acceleration_;
-        }
+        }  
 
-        // Extract yaw from the NEXT pose (pose1)
+        // Extract yaw from the NEXT pose
         tf2::Quaternion q_next(
-            pose1.pose.orientation.x,
-            pose1.pose.orientation.y,
-            pose1.pose.orientation.z,
-            pose1.pose.orientation.w);
+            pose_yaw->pose.orientation.x,
+            pose_yaw->pose.orientation.y,
+            pose_yaw->pose.orientation.z,
+            pose_yaw->pose.orientation.w);
         tf2::Matrix3x3 m_next(q_next);
         double roll_next, pitch_next, yaw_next;
         m_next.getRPY(roll_next, pitch_next, yaw_next);
 
+        RCLCPP_WARN(this->get_logger(), "Yaw: %f", yaw_next);
+        
         // Adjust yaw_next with symmetry handling
         yaw_next = normalizeAngle(yaw_next);
         previous_yaw = normalizeAngle(previous_yaw);
 
-        // Ensure yaw is aligned with the velocity vector within 90 degrees
-        double velocity_magnitude_xy = std::sqrt(
-            velocity_desired_world.x() * velocity_desired_world.x() +
-            velocity_desired_world.y() * velocity_desired_world.y()
+        // Convert yaw to a 2D unit vector
+        Eigen::Vector2d yaw_vector(std::cos(yaw_next), std::sin(yaw_next));
+
+        // Compute the velocity vector in the x-y plane
+        Eigen::Vector2d velocity_vector(
+            velocity_desired_world.x(),
+            velocity_desired_world.y()
         );
+        double velocity_magnitude_xy = velocity_vector.norm();
 
         // Only adjust yaw if the x-y velocity magnitude is above a threshold
         if (velocity_magnitude_xy > 1.0) { // Threshold to avoid issues with small movements
-            Eigen::Vector3d velocity_direction_xy(
-                velocity_desired_world.x() / velocity_magnitude_xy,
-                velocity_desired_world.y() / velocity_magnitude_xy,
-                0.0 // Ignore z-component for yaw alignment
-            );
+            velocity_vector.normalize(); // Normalize the velocity vector
 
-            double velocity_yaw = std::atan2(velocity_direction_xy.y(), velocity_direction_xy.x());
-            double angle_to_velocity = normalizeAngle(yaw_next - velocity_yaw);
+            // Compute the angle between the yaw vector and the velocity vector
+            double dot_product = yaw_vector.dot(velocity_vector);
+            double angle_to_velocity = std::acos(std::clamp(dot_product, -1.0, 1.0)); // Clamp to avoid numerical issues
 
-            // Handle cases where yaw is opposite to the velocity vector
-            if (std::abs(angle_to_velocity) > M_PI / 2.0) {
-                RCLCPP_WARN(this->get_logger(), "Yaw is opposite to velocity vector. Adjusting yaw.");
-                if (angle_to_velocity > 0) {
-                    yaw_next = normalizeAngle(velocity_yaw + M_PI / 2.0);
-                } else {
-                    yaw_next = normalizeAngle(velocity_yaw - M_PI / 2.0);
-                }
-            } else if (std::abs(angle_to_velocity) > max_yaw_offset_) {
+
+            // Check if the angle exceeds max_yaw_offset_
+            if (std::abs(angle_to_velocity) > max_yaw_offset_) {
                 RCLCPP_WARN(this->get_logger(), "Yaw exceeds max allowable offset. Adjusting yaw.");
-                if (angle_to_velocity > 0) {
-                    yaw_next = normalizeAngle(velocity_yaw + max_yaw_offset_);
-                } else {
-                    yaw_next = normalizeAngle(velocity_yaw - max_yaw_offset_);
-                }
+
+                // Rotate the yaw vector to align closer to the velocity vector
+                Eigen::Rotation2D<double> rotation((angle_to_velocity > 0) ? -max_yaw_offset_ : max_yaw_offset_);
+                yaw_vector = rotation * velocity_vector;
+
+                // Update yaw_next based on the adjusted yaw vector
+                yaw_next = std::atan2(yaw_vector.y(), yaw_vector.x());
             }
         }
 
@@ -347,34 +350,33 @@ void OffboardControl::process_path(const Path::SharedPtr msg)
             yaw_next = normalizeAngle(previous_yaw - delta_yaw);
         }
 
+        // Update the previous parameters
         previous_yaw = yaw_next;
+        previous_published_velocity = velocity_desired_world;     
 
         // Create and publish the TrajectorySetpoint message for velocity control
         TrajectorySetpoint setpoint_msg{};
         setpoint_msg.position = {NAN, NAN, NAN};
         
         setpoint_msg.velocity = {
-            static_cast<float>(velocity_desired_world.x()),
             static_cast<float>(velocity_desired_world.y()),
-            static_cast<float>(velocity_desired_world.z())
+            static_cast<float>(velocity_desired_world.x()),
+            static_cast<float>(-velocity_desired_world.z())
         };
 
         setpoint_msg.acceleration = {
-            static_cast<float>(acceleration_desired_world.x()),
             static_cast<float>(acceleration_desired_world.y()),
-            static_cast<float>(acceleration_desired_world.z())
+            static_cast<float>(acceleration_desired_world.x()),
+            static_cast<float>(-acceleration_desired_world.z())
         };
 
-        setpoint_msg.yaw = static_cast<float>(-yaw_next + M_PI / 2.0); // Use yaw from pose1
+        setpoint_msg.yaw = static_cast<float>(-yaw_next + M_PI / 2.0);
         setpoint_msg.yawspeed = NAN;
 
         publish_offboard_control_mode_velocity();
         trajectory_setpoint_publisher_->publish(setpoint_msg);
         RCLCPP_INFO(this->get_logger(), "Published Velocity Setpoint: [%f, %f, %f] m/s, Yaw: %f rad",
-                    setpoint_msg.velocity[0], setpoint_msg.velocity[1], setpoint_msg.velocity[2], setpoint_msg.yaw);
-
-        // Update the previous velocity for the next iteration
-        previous_published_velocity = velocity_desired_world;            
+                    setpoint_msg.velocity[0], setpoint_msg.velocity[1], setpoint_msg.velocity[2], setpoint_msg.yaw);     
 
         // Arm the drone if it's not armed
         if (!armed_) {
