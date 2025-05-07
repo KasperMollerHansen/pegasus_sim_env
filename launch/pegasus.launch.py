@@ -43,9 +43,9 @@ def generate_launch_description():
                 {"interpolation_distance": 3.0},    # Interpolation distance
                 {"frame_id": "base_link"},          # Map centered at base_link
                 {"max_velocity": 10.0},             # Maximum velocity
-                {"min_velocity": 1.0},              # Minimum velocity
-                {"max_acceleration": 0.5},          # Acceleration
-                {"max_angle_change": math.pi / 6},  # Maximum angle change (30 degrees)
+                {"min_velocity": 0.5},              # Minimum velocity
+                {"max_acceleration": 0.1},          # Acceleration
+                {"max_angle_change": math.pi / 18},  # Maximum angle change (30 degrees)
                 {"path_topic": "/planner/smoothed_path"}, # Path topic
             ]
         ),

@@ -197,7 +197,7 @@ void OffboardControl::process_path(const Path::SharedPtr msg)
     static double previous_velocity = 0.0; // Track the previous speed
     static double previous_yaw = 0.0; // Track the previous yaw
     static double dt = 1; // Time difference between updates (can be adjusted dynamically)
-    static double delta_vel = min_velocity_ / 20.0; // Velocity change threshold
+    static double delta_vel = min_velocity_ / 10.0; // Velocity change threshold
     static double delta_yaw = 0.1; // Yaw change threshold
     static double max_yaw_offset_ = M_PI / 2.0; // Maximum yaw offset allowed
 
@@ -329,16 +329,19 @@ void OffboardControl::process_path(const Path::SharedPtr msg)
             double angle_to_velocity = std::acos(std::clamp(dot_product, -1.0, 1.0)); // Clamp to avoid numerical issues
 
 
-            // Check if the angle exceeds max_yaw_offset_
             if (std::abs(angle_to_velocity) > max_yaw_offset_) {
                 RCLCPP_WARN(this->get_logger(), "Yaw exceeds max allowable offset. Adjusting yaw.");
-
-                // Rotate the yaw vector to align closer to the velocity vector
-                Eigen::Rotation2D<double> rotation((angle_to_velocity > 0) ? -max_yaw_offset_ : max_yaw_offset_);
-                yaw_vector = rotation * velocity_vector;
-
-                // Update yaw_next based on the adjusted yaw vector
-                yaw_next = std::atan2(yaw_vector.y(), yaw_vector.x());
+            
+                // Calculate the two possible yaw values
+                double yaw_positive = normalizeAngle(std::atan2(velocity_vector.y(), velocity_vector.x()) + max_yaw_offset_);
+                double yaw_negative = normalizeAngle(std::atan2(velocity_vector.y(), velocity_vector.x()) - max_yaw_offset_);
+            
+                // Select the yaw value that is closer to the velocity vector
+                if (std::abs(normalizeAngle(yaw_positive - yaw_next)) < std::abs(normalizeAngle(yaw_negative - yaw_next))) {
+                    yaw_next = yaw_positive;
+                } else {
+                    yaw_next = yaw_negative;
+                }
             }
         }
 
