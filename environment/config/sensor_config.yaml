@@ -3,8 +3,8 @@ stereo_camera:
   resolution:
     width: 640
     height: 480
-  focal_length: 15
-  focus_distance: 0.6
+  focal_length: 20.0
+  focus_distance: 10.0
   f_stop: 240
   clipping_range:
     near: 0.1
