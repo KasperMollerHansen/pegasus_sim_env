@@ -182,7 +182,7 @@ private:
         global_map_.header.frame_id = "odom";
         global_map_pub_->publish(global_map_);
 
-        RCLCPP_INFO(this->get_logger(), "Published local and global cost maps.");
+        // RCLCPP_INFO(this->get_logger(), "Published local and global cost maps.");
     }
 
     // Parameters and computed values

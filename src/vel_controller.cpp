@@ -61,9 +61,9 @@ public:
             "/fmu/out/vehicle_control_mode", qos_profile, [this](const VehicleControlMode::SharedPtr msg) {
                 armed_ = msg->flag_armed;
                 if (armed_) {
-                    RCLCPP_INFO(this->get_logger(), "Drone is armed.");
+                    // RCLCPP_INFO(this->get_logger(), "Drone is armed.");
                 } else {
-                    RCLCPP_INFO(this->get_logger(), "Drone is disarmed.");
+                    // RCLCPP_INFO(this->get_logger(), "Drone is disarmed.");
                 }
             });
 
@@ -95,6 +95,7 @@ private:
     double min_velocity_;
     double max_acceleration_;
     double max_angle_change_;
+    double normalizeAngle(double angle);
 };
 
 /**
@@ -128,7 +129,7 @@ void OffboardControl::publish_offboard_control_mode_velocity()
     msg.body_rate = false;
     msg.timestamp = this->get_clock()->now().nanoseconds() / 1000;
     offboard_control_mode_publisher_->publish(msg);
-    RCLCPP_INFO(this->get_logger(), "Published Offboard Control Mode (Velocity)");
+    // RCLCPP_INFO(this->get_logger(), "Published Offboard Control Mode (Velocity)");
 }
 
 int countStraightLinePoints(const std::vector<geometry_msgs::msg::PoseStamped> &poses) {
@@ -157,7 +158,7 @@ int countStraightLinePoints(const std::vector<geometry_msgs::msg::PoseStamped> &
         dir2.normalize();
 
         // Check if the direction vectors are collinear
-        if ((dir1.cross(dir2)).norm() < 1e-2) { // Cross product close to zero
+        if ((dir1.cross(dir2)).norm() < 1e-1) { // Cross product close to zero
             count++;
         } else {
             break; // Stop counting if the line is broken
@@ -180,15 +181,25 @@ void OffboardControl::publish_vehicle_command(uint16_t command, float param1, fl
     msg.from_external = true;
     msg.timestamp = this->get_clock()->now().nanoseconds() / 1000;
     vehicle_command_publisher_->publish(msg);
-    RCLCPP_INFO(this->get_logger(), "Published Vehicle Command: %d", command);
+    // RCLCPP_INFO(this->get_logger(), "Published Vehicle Command: %d", command);
+}
+
+// Helper function to normalize angles to the range [-π, π]
+double OffboardControl::normalizeAngle(double angle) {
+    while (angle > M_PI) angle -= 2.0 * M_PI;
+    while (angle < -M_PI) angle += 2.0 * M_PI;
+    return angle;
 }
 
 void OffboardControl::process_path(const Path::SharedPtr msg)
 { 
     static Eigen::Vector3d previous_published_velocity(0.0, 0.0, 0.0); // Track the previous velocity
     static double previous_velocity = 0.0; // Track the previous speed
+    static double previous_yaw = 0.0; // Track the previous yaw
     static double dt = 1; // Time difference between updates (can be adjusted dynamically)
-    static double delta_vel = min_velocity_ / 20.0; // Velocity change threshold
+    static double delta_vel = min_velocity_ / 10.0; // Velocity change threshold
+    static double delta_yaw = 0.1; // Yaw change threshold
+    static double max_yaw_offset_ = M_PI / 1.8; // Maximum yaw offset allowed (100 degrees)
 
     // TF2 setup
     geometry_msgs::msg::TransformStamped transform_stamped;
@@ -199,19 +210,21 @@ void OffboardControl::process_path(const Path::SharedPtr msg)
         RCLCPP_WARN(this->get_logger(), "Could not transform base_link to odom: %s", ex.what());
         return;
     }
-    // Transform to ned frame
+    // Transform_pos
     Eigen::Vector3d pos_tf(
-        transform_stamped.transform.translation.y,
         transform_stamped.transform.translation.x,
-        -transform_stamped.transform.translation.z);
+        transform_stamped.transform.translation.y,
+        transform_stamped.transform.translation.z);
 
-    if (msg->poses.size() >= 2) { // Need at least two poses for velocity and yaw from pose 1
+    Eigen::Vector3d velocity_desired_world; // Declare the variable before the if-else block
+
+
+    if (msg->poses.size() >= 2) { // Need at least two poses
         RCLCPP_INFO(this->get_logger(), "Received Path with %zu poses", msg->poses.size());
 
-        int straight_line_points = countStraightLinePoints(msg->poses);
+        int straight_line_points = std::max(1, countStraightLinePoints(msg->poses));
         RCLCPP_INFO(this->get_logger(), "Number of points on a straight line: %d", straight_line_points);
-        double velocity = min_velocity_ + 2*delta_vel * straight_line_points;
-
+        double velocity = min_velocity_ + (delta_vel + delta_vel/10*straight_line_points)* straight_line_points; // Hardcoded velocity
         
         // Clamp the velocity change to a
         if (velocity > previous_velocity + delta_vel) {
@@ -226,20 +239,29 @@ void OffboardControl::process_path(const Path::SharedPtr msg)
         }
         previous_velocity = velocity;
 
+        const geometry_msgs::msg::PoseStamped* pose_yaw = nullptr; // Declare a pointer to hold the selected pose
+        // Get the first two poses
         const auto &pose0 = msg->poses[0];
         const auto &pose1 = msg->poses[1];
 
+        // Calculate the index for posex
+        int posex_index = std::clamp(straight_line_points / 2, 0, static_cast<int>(msg->poses.size() - 1));
+
         // Calculate velocity vector from pose0 to pose1
         // Transform pose1 to ned frame
-        Eigen::Vector3d pos0(pose0.pose.position.y, pose0.pose.position.x, -pose0.pose.position.z);
-        Eigen::Vector3d pos1(pose1.pose.position.y, pose1.pose.position.x, -pose1.pose.position.z);
+        Eigen::Vector3d pos0(pose0.pose.position.x, pose0.pose.position.y, pose0.pose.position.z);
+        Eigen::Vector3d pos1(pose1.pose.position.x, pose1.pose.position.y, pose1.pose.position.z);
         
-        Eigen::Vector3d velocity_desired_world; // Declare the variable before the if-else block
-
         if ((pos_tf - pos0).norm() > interpolation_distance_/2.0) {
             velocity_desired_world = (pos0 - pos_tf) / dt; // Move to pose0 if pose0 diverges from tf
+            pose_yaw = &msg->poses[0];
         } else {
             velocity_desired_world = (pos1 - pos_tf) / dt; // Move to next pose
+            pose_yaw = &msg->poses[1];
+        }
+
+        if (straight_line_points > 20){  //Quick fix to advoid yaw rotation
+            pose_yaw = &msg->poses[posex_index]; // Use the pose at the calculated index
         }
 
         velocity_desired_world = velocity_desired_world / velocity_desired_world.norm() * velocity;
@@ -277,50 +299,94 @@ void OffboardControl::process_path(const Path::SharedPtr msg)
         double acceleration_magnitude = acceleration_desired_world.norm();
         if (acceleration_magnitude > max_acceleration_ && acceleration_magnitude > 1e-6) {
             acceleration_desired_world = acceleration_desired_world / acceleration_magnitude * max_acceleration_;
-        }
+        }  
 
-        // Extract yaw from the NEXT pose (pose1)
+        // Extract yaw from the NEXT pose
         tf2::Quaternion q_next(
-            pose1.pose.orientation.x,
-            pose1.pose.orientation.y,
-            pose1.pose.orientation.z,
-            pose1.pose.orientation.w);
+            pose_yaw->pose.orientation.x,
+            pose_yaw->pose.orientation.y,
+            pose_yaw->pose.orientation.z,
+            pose_yaw->pose.orientation.w);
         tf2::Matrix3x3 m_next(q_next);
         double roll_next, pitch_next, yaw_next;
         m_next.getRPY(roll_next, pitch_next, yaw_next);
 
+        RCLCPP_INFO(this->get_logger(), "Yaw: %f", yaw_next);
+        
+        // Adjust yaw_next with symmetry handling
+        yaw_next = normalizeAngle(yaw_next);
+        previous_yaw = normalizeAngle(previous_yaw);
+
+        // Convert yaw to a 2D unit vector
+        Eigen::Vector2d yaw_vector(std::cos(yaw_next), std::sin(yaw_next));
+
+        // Compute the velocity vector in the x-y plane
+        Eigen::Vector2d velocity_vector(
+            velocity_desired_world.x(),
+            velocity_desired_world.y()
+        );
+        double velocity_magnitude_xy = velocity_vector.norm();
+
+        // Only adjust yaw if the x-y velocity magnitude is above a threshold
+        if (velocity_magnitude_xy > 0.5) { // Threshold to avoid issues with small movements
+            velocity_vector.normalize(); // Normalize the velocity vector
+
+            // Compute the angle between the yaw vector and the velocity vector
+            double dot_product = yaw_vector.dot(velocity_vector);
+            double angle_to_velocity = std::acos(std::clamp(dot_product, -1.0, 1.0)); // Clamp to avoid numerical issues
+
+
+            if (std::abs(angle_to_velocity) > max_yaw_offset_) {
+                RCLCPP_WARN(this->get_logger(), "Yaw exceeds max allowable offset. Adjusting yaw.");
+            
+                // Calculate the two possible yaw values
+                double yaw_positive = normalizeAngle(std::atan2(velocity_vector.y(), velocity_vector.x()) + max_yaw_offset_);
+                double yaw_negative = normalizeAngle(std::atan2(velocity_vector.y(), velocity_vector.x()) - max_yaw_offset_);
+            
+                // Select the yaw value that is closer to the velocity vector
+                if (std::abs(normalizeAngle(yaw_positive - yaw_next)) < std::abs(normalizeAngle(yaw_negative - yaw_next))) {
+                    yaw_next = yaw_positive;
+                } else {
+                    yaw_next = yaw_negative;
+                }
+            }
+        }
+
+        double yaw_diff = normalizeAngle(yaw_next - previous_yaw);
+
+        if (yaw_diff > delta_yaw) {
+            yaw_next = normalizeAngle(previous_yaw + delta_yaw);
+        } else if (yaw_diff < -delta_yaw) {
+            yaw_next = normalizeAngle(previous_yaw - delta_yaw);
+        }
+
+        // Update the previous parameters
+        previous_yaw = yaw_next;
+        previous_published_velocity = velocity_desired_world;     
+
         // Create and publish the TrajectorySetpoint message for velocity control
         TrajectorySetpoint setpoint_msg{};
-        // setpoint_msg.position = {
-        //     static_cast<float>(pos1.y()), // y
-        //     static_cast<float>(pos1.x()), // x
-        //     static_cast<float>(pos1.z()) // -z
-        // };
-
         setpoint_msg.position = {NAN, NAN, NAN};
         
         setpoint_msg.velocity = {
-            static_cast<float>(velocity_desired_world.x()),
             static_cast<float>(velocity_desired_world.y()),
-            static_cast<float>(velocity_desired_world.z())
+            static_cast<float>(velocity_desired_world.x()),
+            static_cast<float>(-velocity_desired_world.z())
         };
 
         setpoint_msg.acceleration = {
-            static_cast<float>(acceleration_desired_world.x()),
             static_cast<float>(acceleration_desired_world.y()),
-            static_cast<float>(acceleration_desired_world.z())
+            static_cast<float>(acceleration_desired_world.x()),
+            static_cast<float>(-acceleration_desired_world.z())
         };
 
-        setpoint_msg.yaw = static_cast<float>(-yaw_next + M_PI / 2.0); // Use yaw from pose1
+        setpoint_msg.yaw = static_cast<float>(-yaw_next + M_PI / 2.0);
         setpoint_msg.yawspeed = NAN;
 
         publish_offboard_control_mode_velocity();
         trajectory_setpoint_publisher_->publish(setpoint_msg);
         RCLCPP_INFO(this->get_logger(), "Published Velocity Setpoint: [%f, %f, %f] m/s, Yaw: %f rad",
-                    setpoint_msg.velocity[0], setpoint_msg.velocity[1], setpoint_msg.velocity[2], setpoint_msg.yaw);
-
-        // Update the previous velocity for the next iteration
-        previous_published_velocity = velocity_desired_world;            
+                    setpoint_msg.velocity[0], setpoint_msg.velocity[1], setpoint_msg.velocity[2], setpoint_msg.yaw);     
 
         // Arm the drone if it's not armed
         if (!armed_) {
@@ -328,11 +394,22 @@ void OffboardControl::process_path(const Path::SharedPtr msg)
             arm();
         }
     } else if (msg->poses.size() == 1) {
-        RCLCPP_WARN(this->get_logger(), "Received Path message with only one pose. Sending zero velocity and current yaw.");
+        RCLCPP_WARN(this->get_logger(), "Received Path message with only one pose.");
         const auto &current_pose = msg->poses[0];
+        // Calculate the velocity vector from the current pose to the tf position
+        Eigen::Vector3d current_position(current_pose.pose.position.x, current_pose.pose.position.y, current_pose.pose.position.z);
+        velocity_desired_world = (current_position - pos_tf) / dt; // Move to current pose
+        velocity_desired_world = velocity_desired_world / velocity_desired_world.norm() * min_velocity_;
+
         TrajectorySetpoint setpoint_msg{};
-        setpoint_msg.velocity = {0.0f, 0.0f, 0.0f};
         setpoint_msg.position = {NAN, NAN, NAN};
+        
+        setpoint_msg.velocity = {
+            static_cast<float>(velocity_desired_world.y()),
+            static_cast<float>(velocity_desired_world.x()),
+            static_cast<float>(-velocity_desired_world.z())
+        };
+
         setpoint_msg.yaw = static_cast<float>(-tf2::getYaw(tf2::Quaternion(current_pose.pose.orientation.x, current_pose.pose.orientation.y, current_pose.pose.orientation.z, current_pose.pose.orientation.w)) + M_PI / 2.0);
         setpoint_msg.yawspeed = NAN;
         publish_offboard_control_mode_velocity();

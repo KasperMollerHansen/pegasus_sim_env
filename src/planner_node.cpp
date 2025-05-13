@@ -35,6 +35,7 @@ public:
         this->declare_parameter<std::string>("costmap_topic", "/local_costmap/costmap");
         this->declare_parameter<std::string>("waypoints_topic", "/oscep/waypoints");
         this->declare_parameter<std::string>("path_planner_prefix", "/planner");
+        this->declare_parameter<int>("ground_truth_update_interval", 2000); // in milliseconds
 
         obstacle_threshold_ = this->get_parameter("obstacle_threshold").as_int();
         frame_id_ = this->get_parameter("frame_id").as_string();
@@ -42,9 +43,17 @@ public:
         std::string costmap_topic = this->get_parameter("costmap_topic").as_string();
         std::string waypoints_topic = this->get_parameter("waypoints_topic").as_string();
         std::string path_planner_prefix = this->get_parameter("path_planner_prefix").as_string();
+        int ground_truth_update_interval = this->get_parameter("ground_truth_update_interval").as_int();
 
         tf_buffer_ = std::make_shared<tf2_ros::Buffer>(this->get_clock());
         tf_listener_ = std::make_shared<tf2_ros::TransformListener>(*tf_buffer_);
+
+        ground_truth_trajectory_.header.frame_id = frame_id_;
+
+        // Set up a timer to update the ground truth trajectory at a fixed interval (e.g., 2000ms)
+        ground_truth_timer_ = this->create_wall_timer(
+            std::chrono::milliseconds(ground_truth_update_interval), // Adjust the interval as needed
+            std::bind(&PathPlanner::updateGroundTruthTrajectory, this));
 
         // QoS profile for subscriptions
         rclcpp::QoS qos_profile(rclcpp::KeepLast(1));
@@ -64,7 +73,6 @@ public:
         // Publisher for the planned path
         viewpoints_adjusted_pub_ = this->create_publisher<nav_msgs::msg::Path>(path_planner_prefix + "/viewpoints_adjusted", 10);
         raw_path_pub_ = this->create_publisher<nav_msgs::msg::Path>(path_planner_prefix + "/raw_path", 10);
-        down_sampled_path_pub_ = this->create_publisher<nav_msgs::msg::Path>(path_planner_prefix + "/downsampled_path", 10);
         smoothed_path_pub_ = this->create_publisher<nav_msgs::msg::Path>(path_planner_prefix + "/smoothed_path", 10);
         ground_truth_trajectory_pub_ = this->create_publisher<nav_msgs::msg::Path>(path_planner_prefix + "/ground_truth_trajectory", 10);
     }
@@ -74,7 +82,6 @@ private:
     rclcpp::Subscription<nav_msgs::msg::Path>::SharedPtr waypoints_sub_;
     rclcpp::Publisher<nav_msgs::msg::Path>::SharedPtr viewpoints_adjusted_pub_;
     rclcpp::Publisher<nav_msgs::msg::Path>::SharedPtr raw_path_pub_;
-    rclcpp::Publisher<nav_msgs::msg::Path>::SharedPtr down_sampled_path_pub_;
     rclcpp::Publisher<nav_msgs::msg::Path>::SharedPtr smoothed_path_pub_;
     rclcpp::Publisher<nav_msgs::msg::Path>::SharedPtr ground_truth_trajectory_pub_;
     std::shared_ptr<tf2_ros::Buffer> tf_buffer_;
@@ -84,10 +91,13 @@ private:
     int obstacle_threshold_;
     std::string frame_id_;
     double interpolation_distance_;
+    rclcpp::TimerBase::SharedPtr ground_truth_timer_;
+    nav_msgs::msg::Path ground_truth_trajectory_;
+    bool path_invalid_flag_ = false;
 
     void costmapCallback(const nav_msgs::msg::OccupancyGrid::SharedPtr msg) {
         costmap_ = msg;
-        RCLCPP_INFO(this->get_logger(), "Received costmap");
+        // RCLCPP_INFO(this->get_logger(), "Received costmap");
     
         // Re-plan and publish the path only when the costmap is updated
         if (!adjusted_waypoints_.poses.empty()) {
@@ -111,7 +121,7 @@ private:
         adjusted_waypoints_.poses.clear();
     
         for (const auto &pose : msg->poses) {
-            auto [adjusted_pose, _] = adjustWaypointForCollision(pose, costmap_->info.resolution, 20);
+            auto [adjusted_pose, _] = adjustWaypointForCollision(pose, 0.5, costmap_->info.resolution, 20);
     
             // Add the adjusted pose to the raw waypoints
             all_adjusted_waypoints.poses.push_back(adjusted_pose);
@@ -124,6 +134,7 @@ private:
         // Publish all waypoints (including invalid ones)
         viewpoints_adjusted_pub_->publish(all_adjusted_waypoints);
     }
+
 
     geometry_msgs::msg::PoseStamped getCurrentPosition() {
         geometry_msgs::msg::PoseStamped current_position;
@@ -145,9 +156,39 @@ private:
         return current_position;
     }
 
+    void updateGroundTruthTrajectory() {
+        // Ensure the costmap is initialized
+        if (!costmap_) {
+            RCLCPP_WARN(this->get_logger(), "Costmap is not initialized, skipping update");
+            return;
+        }
+    
+        // Get the current position
+        geometry_msgs::msg::PoseStamped current_position = getCurrentPosition();
+    
+        // Check if the current position is valid
+        if (current_position.header.frame_id.empty()) {
+            RCLCPP_WARN(this->get_logger(), "Invalid current position, skipping update");
+            return;
+        }
+    
+        // Update the header of the ground truth trajectory
+        ground_truth_trajectory_.header.frame_id = costmap_->header.frame_id; // Ensure frame ID matches the costmap
+        ground_truth_trajectory_.header.stamp = this->now(); // Update the timestamp
+    
+        // Append the current position to the trajectory
+        ground_truth_trajectory_.poses.push_back(current_position);
+    
+        // Publish the updated trajectory
+        ground_truth_trajectory_pub_->publish(ground_truth_trajectory_);
+    
+        // Log for debugging
+        // RCLCPP_INFO(this->get_logger(), "Appended current position to ground truth trajectory and published");
+    }
+
     // Function to check and adjust waypoints for collision-free zones
     std::pair<geometry_msgs::msg::PoseStamped, bool> adjustWaypointForCollision(
-        const geometry_msgs::msg::PoseStamped &waypoint, float resolution, int max_attempts) {
+        const geometry_msgs::msg::PoseStamped &waypoint, float distance, float resolution, int max_attempts) {
     
         geometry_msgs::msg::PoseStamped adjusted_waypoint = waypoint;
         bool was_adjusted = false;
@@ -175,10 +216,10 @@ private:
     
                 // Check if the current waypoint is in a collision-free zone
                 if (costmap_->data[index] <= obstacle_threshold_) {
-                    // Test the point 0.5 meters in front
+                    // Test the point distance meters in front
                     geometry_msgs::msg::PoseStamped forward_waypoint = adjusted_waypoint;
-                    forward_waypoint.pose.position.x += 0.5 * std::cos(yaw);
-                    forward_waypoint.pose.position.y += 0.5 * std::sin(yaw);
+                    forward_waypoint.pose.position.x += distance * std::cos(yaw);
+                    forward_waypoint.pose.position.y += distance * std::sin(yaw);
     
                     int forward_x_index = static_cast<int>((forward_waypoint.pose.position.x - costmap_->info.origin.position.x) / resolution);
                     int forward_y_index = static_cast<int>((forward_waypoint.pose.position.y - costmap_->info.origin.position.y) / resolution);
@@ -190,15 +231,15 @@ private:
                         // Check if the forward waypoint is in a collision-free zone
                         if (costmap_->data[forward_index] <= obstacle_threshold_) {
                             // Both current and forward points are valid
-                            return {forward_waypoint, was_adjusted};
+                            return {adjusted_waypoint, was_adjusted};
                         }
                     }
                 }
             }
     
-            // Move both the current and forward waypoints 0.5 meters back
-            adjusted_waypoint.pose.position.x -= 0.5 * std::cos(yaw);
-            adjusted_waypoint.pose.position.y -= 0.5 * std::sin(yaw);
+            // Move both the current and forward waypoints distance meters back
+            adjusted_waypoint.pose.position.x -= distance * std::cos(yaw);
+            adjusted_waypoint.pose.position.y -= distance * std::sin(yaw);
             was_adjusted = true;
         }
     
@@ -260,24 +301,50 @@ private:
         nav_msgs::msg::Path raw_path;
         raw_path.header.stamp = this->now();
         raw_path.header.frame_id = costmap_->header.frame_id;
+        
+        nav_msgs::msg::Path smoothed_path;
+        int idx = -1;
 
-        for (size_t i = 0; i < init_path.poses.size() - 1; ++i) {
+        for (size_t i = 0; i < init_path.poses.size() - 1 && i < 4; ++i) { // Limit to 4 segments
             const auto &start = init_path.poses[i];
             const auto &goal = init_path.poses[i + 1];
     
             // Plan the path for the current segment
             auto segment_path = planPath(start, goal);
 
+            // Fail-safe: Check if the segment path is empty
+            if (segment_path.empty()) {
+                RCLCPP_ERROR(this->get_logger(), "Failed to plan a valid path segment between waypoints %zu and %zu.", i, i + 1);
+                path_invalid_flag_ = true; // Mark the path as invalid
+                idx = i;
+                break; // Stop further planning
+            }
+            path_invalid_flag_ = false; 
+        
             // Add the segment path to the raw path
             raw_path.poses.insert(raw_path.poses.end(), segment_path.begin(), segment_path.end());
         }
+
+        if (path_invalid_flag_ && idx == 0) {
+            RCLCPP_ERROR(this->get_logger(), "Path planning failed. Marking the path as invalid and aborting.");
+            smoothed_path.header.stamp = this->now(); // Update the timestamp
+            smoothed_path.header.frame_id = costmap_->header.frame_id; // Set the frame ID
+            geometry_msgs::msg::PoseStamped current_position_adjusted = adjustWaypointForCollision(current_position, 0.5, costmap_->info.resolution, 10).first;
+            if (current_position_adjusted.header.frame_id.empty()) {
+                RCLCPP_ERROR(this->get_logger(), "Failed to adjust current position for collision-free zone");
+                return;
+            }
+            smoothed_path.poses.push_back(current_position_adjusted);
+            smoothed_path_pub_->publish(smoothed_path);
+            return; 
+        }
+
         // Publish the raw path
         raw_path_pub_->publish(raw_path);
 
         // Smooth the raw path
         std::vector<geometry_msgs::msg::PoseStamped> smoothed_poses = smoothPath(raw_path.poses, interpolation_distance_);
 
-        nav_msgs::msg::Path smoothed_path;
         smoothed_path.header.stamp = this->now(); // Update the timestamp
         smoothed_path.header.frame_id = costmap_->header.frame_id; // Set the frame ID
         smoothed_path.poses = smoothed_poses;
@@ -327,7 +394,7 @@ private:
                 intermediate.pose.orientation = tf2::toMsg(quaternion);
     
                 // Adjust the waypoint for collision-free zones
-                auto [adjusted_intermediate, was_adjusted] = adjustWaypointForCollision(intermediate, resolution, 20);
+                auto [adjusted_intermediate, was_adjusted] = adjustWaypointForCollision(intermediate, 0.5, resolution, 20);
                 if (adjusted_intermediate.header.frame_id.empty()) {
                     invalid_flag = true;
                     break; // Stop processing if the waypoint is invalid
@@ -399,6 +466,11 @@ private:
         
         // Reconstruct the path
         int current_index = toIndex(goal_x, goal_y);
+        float total_distance_2d = cost_so_far[toIndex(goal_x, goal_y)];
+        if (total_distance_2d <= 0.0f) {
+            RCLCPP_ERROR(this->get_logger(), "Failed to calculate a valid path distance.");
+            return {}; // Return an empty path if no valid path exists
+        }
         
         while (came_from.count(current_index)) {
             int x = current_index % width;
@@ -410,14 +482,9 @@ private:
             pose.pose.position.x = x * resolution + costmap_->info.origin.position.x;
             pose.pose.position.y = y * resolution + costmap_->info.origin.position.y;
         
-            float dx = goal.pose.position.x - start.pose.position.x;
-            float dy = goal.pose.position.y - start.pose.position.y;
             float dz = goal.pose.position.z - start.pose.position.z;
         
-            float distance_to_start_2d = std::sqrt(
-                std::pow(pose.pose.position.x - start.pose.position.x, 2) +
-                std::pow(pose.pose.position.y - start.pose.position.y, 2));
-            float total_distance_2d = std::sqrt(dx * dx + dy * dy);
+            float distance_to_start_2d = cost_so_far[current_index];
         
             if (total_distance_2d > 0.0) {
                 float t = std::clamp(distance_to_start_2d / total_distance_2d, 0.0f, 1.0f);
@@ -436,6 +503,12 @@ private:
         
         full_path.push_back(start);
         std::reverse(full_path.begin(), full_path.end());
+
+        // Check if the path is valid
+        if (full_path.size() <= 2) {
+            RCLCPP_ERROR(this->get_logger(), "A* failed to find a valid path. Only start and end points are available.");
+            return {}; // Return an empty path to indicate failure
+        }
 
         // Downsample the path
         full_path = downsamplePath(full_path, interpolation_distance_*2);

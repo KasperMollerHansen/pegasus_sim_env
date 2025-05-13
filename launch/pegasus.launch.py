@@ -15,8 +15,8 @@ def generate_launch_description():
                 {"local_map_size": 400.0},          # Local map size (400 m x 400 m)
                 {"global_map_size": 1600.0},        # Global map size (1600 m x 1600 m)
                 {"frame_id": "base_link"},          # Map centered at base_link
-                {"safety_distance_min": 8.0},       # Minimum safety distance
-                {"safety_distance_max": 12.0},      # Maximum safety distance    
+                {"safety_distance_min": 6.0},       # Minimum safety distance
+                {"safety_distance_max": 10.0},       # Maximum safety distance    
             ]
         ),
         Node(
@@ -31,6 +31,7 @@ def generate_launch_description():
                 {"costmap_topic": "/local_costmap/costmap"},
                 {"waypoints_topic": "/osep/viewpoints"},
                 {"path_planner_prefix": "/planner"},
+                {"ground_truth_update_interval": 4000}, # Update interval for ground truth (miliseconds)
             ]
         ),
         Node(
@@ -42,9 +43,9 @@ def generate_launch_description():
                 {"interpolation_distance": 3.0},    # Interpolation distance
                 {"frame_id": "base_link"},          # Map centered at base_link
                 {"max_velocity": 10.0},             # Maximum velocity
-                {"min_velocity": 1.0},              # Minimum velocity
-                {"max_acceleration": 0.5},          # Acceleration
-                {"max_angle_change": math.pi / 6},  # Maximum angle change (30 degrees)
+                {"min_velocity": 0.7},              # Minimum velocity
+                {"max_acceleration": 0.2},          # Acceleration
+                {"max_angle_change": math.pi / 18},  # Maximum angle change (30 degrees)
                 {"path_topic": "/planner/smoothed_path"}, # Path topic
             ]
         ),

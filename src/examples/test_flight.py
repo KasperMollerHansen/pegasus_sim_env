@@ -60,7 +60,7 @@ class TestFlight(Node):
 
         self.waypoints_adjustment = self.create_subscription(
             Path,
-            "/planner/waypoints_adjusted",
+            "/planner/viewpoints_adjusted",
             self.adjust_waypoints_callback,
             qos_profile,
         )
@@ -72,7 +72,7 @@ class TestFlight(Node):
         self.vehicle_status = VehicleStatus()
         self.takeoff_height = -5.0
         self.current_checkpoint = 0
-        self.coordinates = generate_coordinates(center_x=200, center_y=0, radius=20, num_points=8, height=120, start=self.start)
+        self.coordinates = generate_coordinates(center_x=200, center_y=0, radius=20, num_points=16, height=120, start=self.start)
         self.center = [200, 0]  # Center of the circle
         self.yaw = 0.0
         self.number_of_waypoints = 6
@@ -148,7 +148,7 @@ class TestFlight(Node):
             distance = np.linalg.norm(current - target)
             self.get_logger().info(f"Distance to point {i}: {distance}")
 
-            if distance < 0.5:  # Threshold for being "close"
+            if distance < 1.0:  # Threshold for being "close"
                 self.get_logger().info(f"Reached point {i}: {target}")
                 self.current_checkpoint += i+1  # Update checkpoint to the next point
                 self.last_update_time = current_time  # Update the last update time
@@ -180,7 +180,7 @@ def calculate_angle(point, center):
 def generate_coordinates(center_x=150, center_y=0, center_z=0, radius=75, num_points=90, height=125, start=True):
     """Generates coordinates in a circle, starting from the closest point to [0, 0, 50]."""
     initial_point = [0.0, 0.0, 100.0]
-    initial_point_1 = [5.0, 0.0, 105.0]
+    initial_point_1 = [20.0, 0.0, 105.0]
 
     generated_points = generate_points_in_radius(center_x, center_y, center_z, radius, num_points, height)
 
