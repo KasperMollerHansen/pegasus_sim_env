@@ -231,7 +231,7 @@ private:
                         // Check if the forward waypoint is in a collision-free zone
                         if (costmap_->data[forward_index] <= obstacle_threshold_) {
                             // Both current and forward points are valid
-                            return {forward_waypoint, was_adjusted};
+                            return {adjusted_waypoint, was_adjusted};
                         }
                     }
                 }
@@ -327,7 +327,13 @@ private:
 
         if (path_invalid_flag_ && idx == 0) {
             RCLCPP_ERROR(this->get_logger(), "Path planning failed. Marking the path as invalid and aborting.");
-            return; // Abort without publishing
+            smoothed_path.header.stamp = this->now(); // Update the timestamp
+            smoothed_path.header.frame_id = costmap_->header.frame_id; // Set the frame ID
+            geometry_msgs::msg::PoseStamped current_position_adjusted = adjustWaypointForCollision(current_position, costmap_->info.resolution, 20).first;
+
+            smoothed_path.poses.push_back(current_position_adjusted);
+            smoothed_path_pub_->publish(smoothed_path);
+            return; 
         }
 
         // Publish the raw path

@@ -216,6 +216,9 @@ void OffboardControl::process_path(const Path::SharedPtr msg)
         transform_stamped.transform.translation.y,
         transform_stamped.transform.translation.z);
 
+    Eigen::Vector3d velocity_desired_world; // Declare the variable before the if-else block
+
+
     if (msg->poses.size() >= 2) { // Need at least two poses
         RCLCPP_INFO(this->get_logger(), "Received Path with %zu poses", msg->poses.size());
 
@@ -250,8 +253,6 @@ void OffboardControl::process_path(const Path::SharedPtr msg)
         Eigen::Vector3d pos0(pose0.pose.position.x, pose0.pose.position.y, pose0.pose.position.z);
         Eigen::Vector3d pos1(pose1.pose.position.x, pose1.pose.position.y, pose1.pose.position.z);
         
-        Eigen::Vector3d velocity_desired_world; // Declare the variable before the if-else block
-
         if ((pos_tf - pos0).norm() > interpolation_distance_/2.0) {
             velocity_desired_world = (pos0 - pos_tf) / dt; // Move to pose0 if pose0 diverges from tf
             pose_yaw = &msg->poses[0];
@@ -394,11 +395,22 @@ void OffboardControl::process_path(const Path::SharedPtr msg)
             arm();
         }
     } else if (msg->poses.size() == 1) {
-        RCLCPP_WARN(this->get_logger(), "Received Path message with only one pose. Sending zero velocity and current yaw.");
+        RCLCPP_WARN(this->get_logger(), "Received Path message with only one pose.");
         const auto &current_pose = msg->poses[0];
+        // Calculate the velocity vector from the current pose to the tf position
+        Eigen::Vector3d current_position(current_pose.pose.position.x, current_pose.pose.position.y, current_pose.pose.position.z);
+        velocity_desired_world = (current_position - pos_tf) / dt; // Move to current pose
+        velocity_desired_world = velocity_desired_world / velocity_desired_world.norm() * min_velocity_;
+
         TrajectorySetpoint setpoint_msg{};
-        setpoint_msg.velocity = {0.0f, 0.0f, 0.0f};
         setpoint_msg.position = {NAN, NAN, NAN};
+        
+        setpoint_msg.velocity = {
+            static_cast<float>(velocity_desired_world.y()),
+            static_cast<float>(velocity_desired_world.x()),
+            static_cast<float>(-velocity_desired_world.z())
+        };
+
         setpoint_msg.yaw = static_cast<float>(-tf2::getYaw(tf2::Quaternion(current_pose.pose.orientation.x, current_pose.pose.orientation.y, current_pose.pose.orientation.z, current_pose.pose.orientation.w)) + M_PI / 2.0);
         setpoint_msg.yawspeed = NAN;
         publish_offboard_control_mode_velocity();
