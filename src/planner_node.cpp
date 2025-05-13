@@ -121,7 +121,7 @@ private:
         adjusted_waypoints_.poses.clear();
     
         for (const auto &pose : msg->poses) {
-            auto [adjusted_pose, _] = adjustWaypointForCollision(pose, costmap_->info.resolution, 20);
+            auto [adjusted_pose, _] = adjustWaypointForCollision(pose, 0.5, costmap_->info.resolution, 20);
     
             // Add the adjusted pose to the raw waypoints
             all_adjusted_waypoints.poses.push_back(adjusted_pose);
@@ -188,7 +188,7 @@ private:
 
     // Function to check and adjust waypoints for collision-free zones
     std::pair<geometry_msgs::msg::PoseStamped, bool> adjustWaypointForCollision(
-        const geometry_msgs::msg::PoseStamped &waypoint, float resolution, int max_attempts) {
+        const geometry_msgs::msg::PoseStamped &waypoint, float distance, float resolution, int max_attempts) {
     
         geometry_msgs::msg::PoseStamped adjusted_waypoint = waypoint;
         bool was_adjusted = false;
@@ -216,10 +216,10 @@ private:
     
                 // Check if the current waypoint is in a collision-free zone
                 if (costmap_->data[index] <= obstacle_threshold_) {
-                    // Test the point 0.5 meters in front
+                    // Test the point distance meters in front
                     geometry_msgs::msg::PoseStamped forward_waypoint = adjusted_waypoint;
-                    forward_waypoint.pose.position.x += 0.5 * std::cos(yaw);
-                    forward_waypoint.pose.position.y += 0.5 * std::sin(yaw);
+                    forward_waypoint.pose.position.x += distance * std::cos(yaw);
+                    forward_waypoint.pose.position.y += distance * std::sin(yaw);
     
                     int forward_x_index = static_cast<int>((forward_waypoint.pose.position.x - costmap_->info.origin.position.x) / resolution);
                     int forward_y_index = static_cast<int>((forward_waypoint.pose.position.y - costmap_->info.origin.position.y) / resolution);
@@ -237,9 +237,9 @@ private:
                 }
             }
     
-            // Move both the current and forward waypoints 0.5 meters back
-            adjusted_waypoint.pose.position.x -= 0.5 * std::cos(yaw);
-            adjusted_waypoint.pose.position.y -= 0.5 * std::sin(yaw);
+            // Move both the current and forward waypoints distance meters back
+            adjusted_waypoint.pose.position.x -= distance * std::cos(yaw);
+            adjusted_waypoint.pose.position.y -= distance * std::sin(yaw);
             was_adjusted = true;
         }
     
@@ -329,8 +329,11 @@ private:
             RCLCPP_ERROR(this->get_logger(), "Path planning failed. Marking the path as invalid and aborting.");
             smoothed_path.header.stamp = this->now(); // Update the timestamp
             smoothed_path.header.frame_id = costmap_->header.frame_id; // Set the frame ID
-            geometry_msgs::msg::PoseStamped current_position_adjusted = adjustWaypointForCollision(current_position, costmap_->info.resolution, 20).first;
-
+            geometry_msgs::msg::PoseStamped current_position_adjusted = adjustWaypointForCollision(current_position, 0.5, costmap_->info.resolution, 10).first;
+            if (current_position_adjusted.header.frame_id.empty()) {
+                RCLCPP_ERROR(this->get_logger(), "Failed to adjust current position for collision-free zone");
+                return;
+            }
             smoothed_path.poses.push_back(current_position_adjusted);
             smoothed_path_pub_->publish(smoothed_path);
             return; 
@@ -391,7 +394,7 @@ private:
                 intermediate.pose.orientation = tf2::toMsg(quaternion);
     
                 // Adjust the waypoint for collision-free zones
-                auto [adjusted_intermediate, was_adjusted] = adjustWaypointForCollision(intermediate, resolution, 20);
+                auto [adjusted_intermediate, was_adjusted] = adjustWaypointForCollision(intermediate, 0.5, resolution, 20);
                 if (adjusted_intermediate.header.frame_id.empty()) {
                     invalid_flag = true;
                     break; // Stop processing if the waypoint is invalid
