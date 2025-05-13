@@ -27,11 +27,11 @@ def generate_launch_description():
             parameters=[
                 {'obstacle_threshold': 50},         # Obstacle threshold, depends on safety distance
                 {"frame_id": "base_link"},          # Map centered at base_link
-                {"interpolation_distance": 3.0},    # Interpolation distance
+                {"interpolation_distance": 2.0},    # Interpolation distance
                 {"costmap_topic": "/local_costmap/costmap"},
                 {"waypoints_topic": "/osep/viewpoints"},
                 {"path_planner_prefix": "/planner"},
-                {"ground_truth_update_interval": 4000}, # Update interval for ground truth (miliseconds)
+                {"ground_truth_update_interval": 8000}, # Update interval for ground truth (miliseconds)
             ]
         ),
         Node(
@@ -40,12 +40,12 @@ def generate_launch_description():
             name="velocity_controller",
             output="screen",
             parameters=[
-                {"interpolation_distance": 3.0},    # Interpolation distance
+                {"interpolation_distance": 2.0},    # Interpolation distance
                 {"frame_id": "base_link"},          # Map centered at base_link
                 {"max_velocity": 10.0},             # Maximum velocity
-                {"min_velocity": 0.7},              # Minimum velocity
+                {"min_velocity": 1.0},              # Minimum velocity
                 {"max_acceleration": 0.2},          # Acceleration
-                {"max_angle_change": math.pi / 18},  # Maximum angle change (30 degrees)
+                {"max_angle_change": math.pi / 18},  # Maximum angle change (10 degrees)
                 {"path_topic": "/planner/smoothed_path"}, # Path topic
             ]
         ),
