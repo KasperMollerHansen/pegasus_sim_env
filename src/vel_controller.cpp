@@ -224,13 +224,13 @@ void OffboardControl::process_path(const Path::SharedPtr msg)
 
         int straight_line_points = std::max(1, countStraightLinePoints(msg->poses));
         RCLCPP_INFO(this->get_logger(), "Number of points on a straight line: %d", straight_line_points);
-        double velocity = min_velocity_ + (delta_vel + delta_vel/10*straight_line_points)* straight_line_points; // Hardcoded velocity
+        double velocity = (min_velocity_ + delta_vel * straight_line_points) * delta_vel * straight_line_points; // Hardcoded velocity
         
         // Clamp the velocity change to a
-        if (velocity > previous_velocity + delta_vel) {
-            velocity = previous_velocity + delta_vel;
-        } else if (velocity < previous_velocity - delta_vel) {
-            velocity = previous_velocity - delta_vel;
+        if (velocity > previous_velocity + delta_vel*previous_velocity) {
+            velocity = previous_velocity + delta_vel*previous_velocity;
+        } else if (velocity < previous_velocity - delta_vel*previous_velocity) {
+            velocity = previous_velocity - delta_vel*previous_velocity;
         }
         if (velocity > max_velocity_) {
             velocity = max_velocity_;
