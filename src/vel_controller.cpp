@@ -252,7 +252,7 @@ void OffboardControl::process_path(const Path::SharedPtr msg)
         Eigen::Vector3d pos0(pose0.pose.position.x, pose0.pose.position.y, pose0.pose.position.z);
         Eigen::Vector3d pos1(pose1.pose.position.x, pose1.pose.position.y, pose1.pose.position.z);
         
-        if ((pos_tf - pos0).norm() > interpolation_distance_/2.0) {
+        if ((pos_tf - pos0).norm() > interpolation_distance_) {
             velocity_desired_world = (pos0 - pos_tf) / dt; // Move to pose0 if pose0 diverges from tf
             pose_yaw = &msg->poses[0];
         } else {
