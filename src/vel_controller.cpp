@@ -195,7 +195,7 @@ void OffboardControl::process_path(const Path::SharedPtr msg)
 { 
     static Eigen::Vector3d previous_published_velocity(0.0, 0.0, 0.0); // Track the previous velocity
     static double previous_velocity = 0.0; // Track the previous speed
-    static double previous_yaw = 0.0; // Track the previous yaw
+    static double previous_yaw = NAN; // Track the previous yaw
     static double dt = 1; // Time difference between updates (can be adjusted dynamically)
     static double delta_vel = min_velocity_ / 10.0; // Velocity change threshold
     static double delta_yaw = 0.1; // Yaw change threshold
@@ -224,7 +224,7 @@ void OffboardControl::process_path(const Path::SharedPtr msg)
 
         int straight_line_points = std::max(1, countStraightLinePoints(msg->poses));
         RCLCPP_INFO(this->get_logger(), "Number of points on a straight line: %d", straight_line_points);
-        double velocity = delta_vel * straight_line_points * delta_vel * straight_line_points; // Hardcoded velocity
+        double velocity = delta_vel * straight_line_points * delta_vel * straight_line_points * interpolation_distance_ / 2; // Hardcoded velocity
         
         // Clamp the velocity change to a
         if (velocity > previous_velocity + delta_vel*previous_velocity) {
@@ -315,6 +315,9 @@ void OffboardControl::process_path(const Path::SharedPtr msg)
         
         // Adjust yaw_next with symmetry handling
         yaw_next = normalizeAngle(yaw_next);
+        if (std::isnan(previous_yaw)) {
+            previous_yaw = yaw_next; // Initialize it with the current yaw
+        }
         previous_yaw = normalizeAngle(previous_yaw);
 
         // Convert yaw to a 2D unit vector
