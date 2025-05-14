@@ -121,7 +121,7 @@ private:
         adjusted_waypoints_.poses.clear();
     
         for (const auto &pose : msg->poses) {
-            auto [adjusted_pose, _] = adjustWaypointForCollision(pose, 0.5, costmap_->info.resolution, 20);
+            auto [adjusted_pose, _] = adjustWaypointForCollision(pose, 1.0, costmap_->info.resolution, 10);
     
             // Add the adjusted pose to the raw waypoints
             all_adjusted_waypoints.poses.push_back(adjusted_pose);
@@ -329,7 +329,7 @@ private:
             RCLCPP_ERROR(this->get_logger(), "Path planning failed. Marking the path as invalid and aborting.");
             smoothed_path.header.stamp = this->now(); // Update the timestamp
             smoothed_path.header.frame_id = costmap_->header.frame_id; // Set the frame ID
-            geometry_msgs::msg::PoseStamped current_position_adjusted = adjustWaypointForCollision(current_position, 0.5, costmap_->info.resolution, 10).first;
+            geometry_msgs::msg::PoseStamped current_position_adjusted = adjustWaypointForCollision(current_position, 1.0, costmap_->info.resolution, 10).first;
             if (current_position_adjusted.header.frame_id.empty()) {
                 RCLCPP_ERROR(this->get_logger(), "Failed to adjust current position for collision-free zone");
                 return;
@@ -394,7 +394,7 @@ private:
                 intermediate.pose.orientation = tf2::toMsg(quaternion);
     
                 // Adjust the waypoint for collision-free zones
-                auto [adjusted_intermediate, was_adjusted] = adjustWaypointForCollision(intermediate, 0.5, resolution, 20);
+                auto [adjusted_intermediate, was_adjusted] = adjustWaypointForCollision(intermediate, 1.0, resolution, 10);
                 if (adjusted_intermediate.header.frame_id.empty()) {
                     invalid_flag = true;
                     break; // Stop processing if the waypoint is invalid
@@ -510,8 +510,28 @@ private:
             return {}; // Return an empty path to indicate failure
         }
 
-        // Downsample the path
-        full_path = downsamplePath(full_path, interpolation_distance_*2);
+        // Adjust the path for collision-free zones
+        std::vector<geometry_msgs::msg::PoseStamped> adjusted_full_path;
+        for (const auto &pose : full_path) {
+            auto [adjusted_pose, was_adjusted] = adjustWaypointForCollision(pose, 1.0, costmap_->info.resolution, 5);
+            adjusted_full_path.push_back(adjusted_pose);
+        }
+
+        // Remove waypoints with an empty header
+        adjusted_full_path.erase(
+            std::remove_if(
+                adjusted_full_path.begin(),
+                adjusted_full_path.end(),
+                [](const geometry_msgs::msg::PoseStamped &pose) {
+                    return pose.header.frame_id.empty();
+                }),
+            adjusted_full_path.end());
+
+        // Replace the original path with the adjusted one
+        full_path = std::move(adjusted_full_path);
+
+        // Downsample the pah
+        full_path = downsamplePath(full_path, interpolation_distance_);
         
         return full_path;
     }
