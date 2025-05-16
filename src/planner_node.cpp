@@ -335,6 +335,12 @@ private:
             geometry_msgs::msg::PoseStamped current_position_adjusted = adjustWaypointForCollision(current_position, extra_safety_distance_, costmap_->info.resolution, 10).first;
             if (current_position_adjusted.header.frame_id.empty()) {
                 RCLCPP_ERROR(this->get_logger(), "Failed to adjust current position for collision-free zone");
+                nav_msgs::msg::Path empty_path;
+                empty_path.header.stamp = this->now();
+                empty_path.header.frame_id = "map"; // Set the appropriate frame ID
+
+                // Publish the empty path
+                smoothed_path_pub_->publish(empty_path);
                 return;
             }
             smoothed_path.poses.push_back(current_position_adjusted);
