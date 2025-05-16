@@ -424,7 +424,7 @@ void OffboardControl::process_path(const Path::SharedPtr msg)
         setpoint_msg.position = {NAN, NAN, NAN};
         setpoint_msg.velocity = {0.0, 0.0, 0.0};
         setpoint_msg.acceleration = {0.0, 0.0, 0.0};
-        setpoint_msg.yaw = static_cast<float>(-previous_yaw + M_PI / 2.0)
+        setpoint_msg.yaw = static_cast<float>(-previous_yaw + M_PI / 2.0);
     }
 }
 
