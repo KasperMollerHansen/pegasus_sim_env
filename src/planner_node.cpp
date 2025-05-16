@@ -36,6 +36,7 @@ public:
         this->declare_parameter<std::string>("waypoints_topic", "/oscep/waypoints");
         this->declare_parameter<std::string>("path_planner_prefix", "/planner");
         this->declare_parameter<int>("ground_truth_update_interval", 2000); // in milliseconds
+        this->declare_parameter<double>("extra_safety_distance", 1.0);
 
         obstacle_threshold_ = this->get_parameter("obstacle_threshold").as_int();
         frame_id_ = this->get_parameter("frame_id").as_string();
@@ -44,6 +45,7 @@ public:
         std::string waypoints_topic = this->get_parameter("waypoints_topic").as_string();
         std::string path_planner_prefix = this->get_parameter("path_planner_prefix").as_string();
         int ground_truth_update_interval = this->get_parameter("ground_truth_update_interval").as_int();
+        extra_safety_distance_ = this->get_parameter("extra_safety_distance").as_double();
 
         tf_buffer_ = std::make_shared<tf2_ros::Buffer>(this->get_clock());
         tf_listener_ = std::make_shared<tf2_ros::TransformListener>(*tf_buffer_);
@@ -94,6 +96,7 @@ private:
     rclcpp::TimerBase::SharedPtr ground_truth_timer_;
     nav_msgs::msg::Path ground_truth_trajectory_;
     bool path_invalid_flag_ = false;
+    double extra_safety_distance_;
 
     void costmapCallback(const nav_msgs::msg::OccupancyGrid::SharedPtr msg) {
         costmap_ = msg;
@@ -121,7 +124,7 @@ private:
         adjusted_waypoints_.poses.clear();
     
         for (const auto &pose : msg->poses) {
-            auto [adjusted_pose, _] = adjustWaypointForCollision(pose, 1.0, costmap_->info.resolution, 10);
+            auto [adjusted_pose, _] = adjustWaypointForCollision(pose, extra_safety_distance_, costmap_->info.resolution, 10);
     
             // Add the adjusted pose to the raw waypoints
             all_adjusted_waypoints.poses.push_back(adjusted_pose);
@@ -329,7 +332,7 @@ private:
             RCLCPP_ERROR(this->get_logger(), "Path planning failed. Marking the path as invalid and aborting.");
             smoothed_path.header.stamp = this->now(); // Update the timestamp
             smoothed_path.header.frame_id = costmap_->header.frame_id; // Set the frame ID
-            geometry_msgs::msg::PoseStamped current_position_adjusted = adjustWaypointForCollision(current_position, 1.0, costmap_->info.resolution, 10).first;
+            geometry_msgs::msg::PoseStamped current_position_adjusted = adjustWaypointForCollision(current_position, extra_safety_distance_, costmap_->info.resolution, 10).first;
             if (current_position_adjusted.header.frame_id.empty()) {
                 RCLCPP_ERROR(this->get_logger(), "Failed to adjust current position for collision-free zone");
                 return;
@@ -394,7 +397,7 @@ private:
                 intermediate.pose.orientation = tf2::toMsg(quaternion);
     
                 // Adjust the waypoint for collision-free zones
-                auto [adjusted_intermediate, was_adjusted] = adjustWaypointForCollision(intermediate, 1.0, resolution, 10);
+                auto [adjusted_intermediate, was_adjusted] = adjustWaypointForCollision(intermediate, extra_safety_distance_, resolution, 10);
                 if (adjusted_intermediate.header.frame_id.empty()) {
                     invalid_flag = true;
                     break; // Stop processing if the waypoint is invalid
@@ -513,7 +516,7 @@ private:
         // Adjust the path for collision-free zones
         std::vector<geometry_msgs::msg::PoseStamped> adjusted_full_path;
         for (const auto &pose : full_path) {
-            auto [adjusted_pose, was_adjusted] = adjustWaypointForCollision(pose, 1.0, costmap_->info.resolution, 5);
+            auto [adjusted_pose, was_adjusted] = adjustWaypointForCollision(pose, extra_safety_distance_, costmap_->info.resolution, 5);
             adjusted_full_path.push_back(adjusted_pose);
         }
 
