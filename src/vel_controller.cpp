@@ -419,6 +419,12 @@ void OffboardControl::process_path(const Path::SharedPtr msg)
         trajectory_setpoint_publisher_->publish(setpoint_msg);
     } else {
         RCLCPP_WARN(this->get_logger(), "Received empty Path message");
+        // Publish zero velocity and acceleration and current yaw
+        TrajectorySetpoint setpoint_msg{};
+        setpoint_msg.position = {NAN, NAN, NAN};
+        setpoint_msg.velocity = {0.0, 0.0, 0.0};
+        setpoint_msg.acceleration = {0.0, 0.0, 0.0};
+        setpoint_msg.yaw = static_cast<float>(-previous_yaw + M_PI / 2.0)
     }
 }
 

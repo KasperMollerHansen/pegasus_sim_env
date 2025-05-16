@@ -36,7 +36,7 @@ public:
         this->declare_parameter<std::string>("waypoints_topic", "/oscep/waypoints");
         this->declare_parameter<std::string>("path_planner_prefix", "/planner");
         this->declare_parameter<int>("ground_truth_update_interval", 2000); // in milliseconds
-        this->declare_parameter<int>("extra_safety_distance", 1.0);
+        this->declare_parameter<double>("extra_safety_distance", 1.0);
 
         obstacle_threshold_ = this->get_parameter("obstacle_threshold").as_int();
         frame_id_ = this->get_parameter("frame_id").as_string();
@@ -45,7 +45,7 @@ public:
         std::string waypoints_topic = this->get_parameter("waypoints_topic").as_string();
         std::string path_planner_prefix = this->get_parameter("path_planner_prefix").as_string();
         int ground_truth_update_interval = this->get_parameter("ground_truth_update_interval").as_int();
-        int extra_safety_distance_ = this->get_parameter("extra_safety_distance").as_int();
+        extra_safety_distance_ = this->get_parameter("extra_safety_distance").as_double();
 
         tf_buffer_ = std::make_shared<tf2_ros::Buffer>(this->get_clock());
         tf_listener_ = std::make_shared<tf2_ros::TransformListener>(*tf_buffer_);
@@ -96,7 +96,7 @@ private:
     rclcpp::TimerBase::SharedPtr ground_truth_timer_;
     nav_msgs::msg::Path ground_truth_trajectory_;
     bool path_invalid_flag_ = false;
-    int extra_safety_distance_;
+    double extra_safety_distance_;
 
     void costmapCallback(const nav_msgs::msg::OccupancyGrid::SharedPtr msg) {
         costmap_ = msg;
