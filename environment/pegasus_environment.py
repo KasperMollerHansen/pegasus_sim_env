@@ -83,7 +83,7 @@ class PegasusApp:
             position=position,
             scale=(0.3, 0.3, 0.3),
             orientation=rot_utils.euler_angles_to_quats(
-                np.array([90.0, 0.0, 180.0]), degrees=True
+                np.array([90.0, 0.0, 0.0]), degrees=True
             ),
         )
         return
