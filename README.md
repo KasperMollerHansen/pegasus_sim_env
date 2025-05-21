@@ -149,5 +149,5 @@ To run the testflight
 ```
 ISAAC_ENV
 source install/setup.bash
-ros2 run pegasus_sim_env testflight.py
+ros2 run pegasus_sim_env test_flight.py
 ```
