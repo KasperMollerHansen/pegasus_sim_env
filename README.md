@@ -24,15 +24,11 @@ cd ~/isaacsim
 ./omni.isaac.sim.post.install.run.sh
 ./isaac-sim.sh
 ```
-Isaac Sim should now open...
+Isaac Sim should now open
 
-Create a conda environment for Isaac Sim and Pegasus Simulator
+Create alias in ~/.bashrc to use the scripts in this repo.
 ```
-conda create -n isaac_env python=3.10
-```
-Create alias in ~/.bashrc
-```
-alias ISAAC_ENV="conda activate isaac_env && source ~/isaacsim/setup_conda_env.sh"
+alias ISAAC_ENV="source ~/isaacsim/setup_conda_env.sh"
 ```
 
 </details>
@@ -106,7 +102,6 @@ sudo ldconfig /usr/local/lib/
 mkdir -p ~/ws_ros2/src/
 cd ~/ws_ros2/src/
 git clone https://github.com/PX4/px4_msgs.git
-git clone https://github.com/PX4/px4_ros_com.git
 cd ..
 colcon build
 ```
@@ -117,36 +112,42 @@ echo source ~/ws_ros2/install/setup.bash >> ~/.bashrc
 
 </details>
 
+<details>
+<summary>Guide to the pegasus_sim_env pkg </summary>
+
+### Clone the pkg ###
+```
+mkdir -p ~/ws_ros2/src/
+cd ~/ws_ros2/src/
+git clone https://github.com/KasperMollerHansen/pegasus_sim_env.git
+cd ..
+colcon build
+```
+
+### Setup Alias ###
+Create alias in ~/.bashrc to use the scripts in this repo.
+```
+alias pegasus_launch="cd ~/ws_ros2 && source install/setup.bash && ./src/pegasus_sim_env/launch_pegasus.sh"
+```
+</details>
+
 
 ## Running simulation
 
-The Micro XRCE-DDS Agent can be run with the following command. The default port of the client is 8888
+This repository contains the simulation setup along with a launch file that is used together with Nvblox.
 
+To run the Isaac Sim simulation
 ```
-MicroXRCEAgent udp4 -p 8888
+pegasus_launch
 ```
-
-<details>
-<summary> Gazebo Simulation </summary>
-
-#### Dependencies
+To launch the planner used with Nvblox
 ```
-pip install --user -U empy==3.3.4 pyros-genmsg setuptools
+source install/setup.bash
+ros2 launch pegasus_sim_env pegasus.launch.py
 ```
-#### Running the simulation
+To run the testflight
 ```
-cd ~/PX4-Autopilot/
-make px4_sitl gz_x500
+ISAAC_ENV
+source install/setup.bash
+ros2 run pegasus_sim_env testflight.py
 ```
-
-</details>
-
-
-<details>
-<summary> Isaac sim - Pegasus</summary>
-
-```
-ISSACSIM_ENV
-python3 PegasusSimulator/examples/1_px4_single_vehicle.py 
-```
-</details>
