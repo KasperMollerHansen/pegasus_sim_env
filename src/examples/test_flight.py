@@ -80,7 +80,7 @@ class TestFlight(Node):
         
 
         # Create a timer to publish control commands
-        self.timer = self.create_timer(0.1, self.timer_callback)
+        self.timer = self.create_timer(0.05, self.timer_callback)
         self.last_update_time = time.time()  # Initialize the last update time
         self.update_cooldown = 1.0  # Cooldown period in seconds (adjust as needed)
 
