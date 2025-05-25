@@ -200,6 +200,7 @@ void OffboardControl::process_path(const Path::SharedPtr msg)
     static double delta_vel = min_velocity_ / 10.0; // Velocity change threshold
     static double delta_yaw = 0.1; // Yaw change threshold
     static double max_yaw_offset_ = M_PI / 1.8; // Maximum yaw offset allowed (100 degrees)
+    static double yaw_next = 0.0; // Initialize yaw_next
 
     // TF2 setup
     geometry_msgs::msg::TransformStamped transform_stamped;
@@ -308,7 +309,7 @@ void OffboardControl::process_path(const Path::SharedPtr msg)
             pose_yaw->pose.orientation.z,
             pose_yaw->pose.orientation.w);
         tf2::Matrix3x3 m_next(q_next);
-        double roll_next, pitch_next, yaw_next;
+        double roll_next, pitch_next;
         m_next.getRPY(roll_next, pitch_next, yaw_next);
 
         RCLCPP_INFO(this->get_logger(), "Yaw: %f", yaw_next);
@@ -418,13 +419,19 @@ void OffboardControl::process_path(const Path::SharedPtr msg)
         publish_offboard_control_mode_velocity();
         trajectory_setpoint_publisher_->publish(setpoint_msg);
     } else {
+        // Use position control to hover the drone in place. Spin the drone slowly to find a valid path.
+        yaw_next = previous_yaw + delta_yaw; // Make it spin around the previous yaw
+        previous_yaw = yaw_next; // Update the previous yaw
+
         RCLCPP_WARN(this->get_logger(), "Received empty Path message");
         // Publish zero velocity and acceleration and current yaw
         TrajectorySetpoint setpoint_msg{};
-        setpoint_msg.position = {NAN, NAN, NAN};
-        setpoint_msg.velocity = {0.0, 0.0, 0.0};
-        setpoint_msg.acceleration = {0.0, 0.0, 0.0};
-        setpoint_msg.yaw = static_cast<float>(-previous_yaw + M_PI / 2.0);
+        setpoint_msg.position = {
+            static_cast<float>(pos_tf.y()),
+            static_cast<float>(pos_tf.x()),
+            static_cast<float>(-pos_tf.z())
+        };
+        setpoint_msg.yaw = static_cast<float>(-yaw_next+ M_PI / 2.0);
     }
 }
 
