@@ -332,7 +332,7 @@ private:
             RCLCPP_ERROR(this->get_logger(), "Path planning failed. Marking the path as invalid and aborting.");
             smoothed_path.header.stamp = this->now(); // Update the timestamp
             smoothed_path.header.frame_id = costmap_->header.frame_id; // Set the frame ID
-            geometry_msgs::msg::PoseStamped current_position_adjusted = adjustWaypointForCollision(current_position, extra_safety_distance_, costmap_->info.resolution, 10).first;
+            geometry_msgs::msg::PoseStamped current_position_adjusted = adjustWaypointForCollision(current_position, extra_safety_distance_, costmap_->info.resolution, 20).first;
             if (current_position_adjusted.header.frame_id.empty()) {
                 RCLCPP_ERROR(this->get_logger(), "Failed to adjust current position for collision-free zone");
                 nav_msgs::msg::Path empty_path;
