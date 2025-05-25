@@ -75,7 +75,7 @@ class TestFlight(Node):
         self.coordinates = generate_coordinates(center_x=200, center_y=0, radius=20, num_points=20, height=120, start=self.start)
         self.center = [200, 0]  # Center of the circle
         self.yaw = 0.0
-        self.number_of_waypoints = 6
+        self.number_of_waypoints = 22
         self.coordinates_to_vist = self.coordinates.copy()
         
 
