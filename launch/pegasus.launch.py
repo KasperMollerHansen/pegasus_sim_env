@@ -47,6 +47,7 @@ def generate_launch_description():
                 {"min_velocity": 1.0},              # Minimum velocity
                 {"max_acceleration": 0.2},          # Acceleration
                 {"max_angle_change": math.pi / 18},  # Maximum angle change (10 degrees)
+                {"max_yaw_to_velocity_angle": 2* math.pi / 3}, # Maximum angular velocity (120 degrees)
                 {"path_topic": "/planner/smoothed_path"}, # Path topic
             ]
         ),

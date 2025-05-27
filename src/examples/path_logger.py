@@ -20,7 +20,7 @@ class PathCollector(Node):
 
         self.data_type = "pose" 
         self.path_topic_name = "/planner/ground_truth_trajectory"
-        self.path_fname = "2d_plan.csv"
+        self.path_fname = "ground_truth_3d.csv"
 
 
         # For logging extracted skeleton
