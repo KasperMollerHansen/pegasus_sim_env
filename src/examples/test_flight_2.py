@@ -73,7 +73,7 @@ class TestFlight(Node):
         self.takeoff_height = -5.0
         self.current_checkpoint = 0
         self.coordinates, self.yaw  = generate_coordinates()
-        self.number_of_waypoints = 8
+        self.number_of_waypoints = 23
         self.coordinates_to_vist = self.coordinates.copy()
         
 
@@ -187,7 +187,7 @@ def generate_coordinates():
                       [185.0, 0.0, 120.0],[20.0, 0.0, 105.0]]  # Initial points to start from
     yaw = [[0.0], 
            [0.0], [0.0], [0.0 + np.pi/18], 
-           [np.pi + np.pi/18], [np.pi], 
+           [np.pi - np.pi/18], [np.pi], 
            [np.pi],[np.pi], [np.pi + np.pi/18],
            [0.0 - np.pi/18], [0.0], [0.0],
            [0.0], [0.0], [0.0 - np.pi/18],
