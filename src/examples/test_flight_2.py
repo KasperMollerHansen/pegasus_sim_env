@@ -73,7 +73,7 @@ class TestFlight(Node):
         self.takeoff_height = -5.0
         self.current_checkpoint = 0
         self.coordinates, self.yaw  = generate_coordinates()
-        self.number_of_waypoints = 8
+        self.number_of_waypoints = 22
         self.coordinates_to_vist = self.coordinates.copy()
         
 
@@ -179,26 +179,20 @@ def generate_coordinates():
     """Generates coordinates in a circle, starting from the closest point to [0, 0, 50]."""
     coordinates = [[0.0, 0.0, 100.0], 
                       [185.0, 0.0, 120.0], [188.0, -10.0, 120.0], [188.0, -50.0, 120.0],
-                      [192.0, -57.0, 120.0],
                       [196.0, -35.0, 120.0], [196.0, -13.0, 120.0], 
-                      [196.0, 5.0, 110.0], [196.0, 13.0, 91.0], [196.0, 26.0, 71.5],
-                      [192.0, 27.0, 72.0], 
+                      [196.0, 5.0, 110.0], [196.0, 13.0, 93.0], [196.0, 26.0, 71.5],
                       [188.0, 26.0 ,73.0], [188.0, 13.0, 94.7], [188.0, 3.5, 113.0],
                       [188.0, 4.2, 125.0], [188.0, 15.5, 143.0], [188.0, 28.5, 165.3],
-                      [192.0, 26.5, 165.3],
                       [196.0, 27.5, 164.6], [196.0, 21.0, 153.8], [196.0, 8.0, 131.6],
-                      [20.0, 0.0, 105.0]]  # Initial points to start from
+                      [185.0, 0.0, 120.0],[20.0, 0.0, 105.0]]  # Initial points to start from
     yaw = [[0.0], 
-           [0.0], [0.0], [0.0], 
-           [np.pi/2], 
-           [np.pi], [np.pi], 
-           [np.pi],[np.pi], [np.pi],
-           [np.pi + np.pi/2],
-           [0.0], [0.0], [0.0],
-           [0.0], [0.0], [0.0],
-           [np.pi/2],
-           [np.pi], [np.pi], [np.pi],
-           [0.0]]  # Yaw angles for each initial point
+           [0.0], [0.0], [0.0 + np.pi/18], 
+           [np.pi + np.pi/18], [np.pi], 
+           [np.pi],[np.pi], [np.pi + np.pi/18],
+           [0.0 - np.pi/18], [0.0], [0.0],
+           [0.0], [0.0], [0.0 - np.pi/18],
+           [np.pi + np.pi/18], [np.pi], [np.pi + np.pi/18],
+           [0.0 - np.pi/18],[np.pi]]  # Yaw angles for each initial point
 
     return coordinates, yaw
 
