@@ -99,6 +99,7 @@ private:
     double max_angle_change_;
     double max_yaw_to_velocity_angle_;
     double normalizeAngle(double angle);
+    Eigen::Vector3d last_tf_pos;
 };
 
 /**
@@ -224,6 +225,8 @@ void OffboardControl::process_path(const Path::SharedPtr msg)
 
     if (msg->poses.size() >= 2) { // Need at least two poses
         RCLCPP_INFO(this->get_logger(), "Received Path with %zu poses", msg->poses.size());
+
+        last_tf_pos = pos_tf; // Update the last TF position
 
         int straight_line_points = std::max(1, countStraightLinePoints(msg->poses));
         RCLCPP_INFO(this->get_logger(), "Number of points on a straight line: %d", straight_line_points);
@@ -401,6 +404,7 @@ void OffboardControl::process_path(const Path::SharedPtr msg)
         }
     } else if (msg->poses.size() == 1) {
         RCLCPP_WARN(this->get_logger(), "Received Path message with only one pose.");
+        last_tf_pos = pos_tf; // Update the last TF position
         const auto &current_pose = msg->poses[0];
         // Calculate the velocity vector from the current pose to the tf position
         Eigen::Vector3d current_position(current_pose.pose.position.x, current_pose.pose.position.y, current_pose.pose.position.z);
@@ -426,12 +430,12 @@ void OffboardControl::process_path(const Path::SharedPtr msg)
         previous_yaw = yaw_next; // Update the previous yaw
 
         RCLCPP_WARN(this->get_logger(), "Received empty Path message");
-        // Publish zero velocity and acceleration and current yaw
+        // Publish last_tf_pos and acceleration and current yaw
         TrajectorySetpoint setpoint_msg{};
         setpoint_msg.position = {
-            static_cast<float>(pos_tf.y()),
-            static_cast<float>(pos_tf.x()),
-            static_cast<float>(-pos_tf.z())
+            static_cast<float>(last_tf_pos.y()),
+            static_cast<float>(last_tf_pos.x()),
+            static_cast<float>(-last_tf_pos.z())
         };
         setpoint_msg.yaw = static_cast<float>(-yaw_next+ M_PI / 2.0);
     }
