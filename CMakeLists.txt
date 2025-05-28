@@ -121,6 +121,7 @@ ament_python_install_package(${PROJECT_NAME})
 install(PROGRAMS
   src/examples/test_flight.py
   src/examples/test_flight_2.py
+  src/examples/test_flight_3.py
   src/examples/path_logger.py
   DESTINATION lib/${PROJECT_NAME}
 )

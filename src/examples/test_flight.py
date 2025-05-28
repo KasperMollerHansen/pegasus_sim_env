@@ -86,13 +86,17 @@ class TestFlight(Node):
 
     def adjust_waypoints_callback(self, waypoints_adjusted):
         new_coordinates = []
-
+        i = 0
         for pose in waypoints_adjusted.poses:
+            i += 1
+            header = pose.header.frame_id # Check if the header frame_id is "odom"
             x = pose.pose.position.x
             y = pose.pose.position.y
             z = pose.pose.position.z
             new_coordinates.append([x, y, z])
-        
+            if i == 1 and header == "":
+                self.current_checkpoint += 1
+
         self.coordinates_to_vist = new_coordinates
 
     def vehicle_odometry_callback(self, vehicle_odometry):
