@@ -32,6 +32,7 @@ public:
         this->declare_parameter<double>("min_velocity", 1.0);
         this->declare_parameter<double>("max_acceleration", 0.5);
         this->declare_parameter<double>("max_angle_change", M_PI / 6.0); // 30 degrees
+        this->declare_parameter<double>("max_yaw_to_velocity_angle", M_PI / 1.8); // 100 degrees per second
         this->declare_parameter<std::string>("path_topic", "/planner/smoothed_path");
 
         interpolation_distance_ = this->get_parameter("interpolation_distance").as_double();
@@ -40,6 +41,7 @@ public:
         min_velocity_ = this->get_parameter("min_velocity").as_double();
         max_acceleration_ = this->get_parameter("max_acceleration").as_double();
         max_angle_change_ = this->get_parameter("max_angle_change").as_double();
+        max_yaw_to_velocity_angle_ = this->get_parameter("max_yaw_to_velocity_angle").as_double();
         std::string path_topic = this->get_parameter("path_topic").as_string();
 
         // Publishers
@@ -95,7 +97,9 @@ private:
     double min_velocity_;
     double max_acceleration_;
     double max_angle_change_;
+    double max_yaw_to_velocity_angle_;
     double normalizeAngle(double angle);
+    Eigen::Vector3d last_tf_pos;
 };
 
 /**
@@ -199,7 +203,6 @@ void OffboardControl::process_path(const Path::SharedPtr msg)
     static double dt = 1; // Time difference between updates (can be adjusted dynamically)
     static double delta_vel = min_velocity_ / 10.0; // Velocity change threshold
     static double delta_yaw = 0.1; // Yaw change threshold
-    static double max_yaw_offset_ = M_PI / 1.8; // Maximum yaw offset allowed (100 degrees)
     static double yaw_next = 0.0; // Initialize yaw_next
 
     // TF2 setup
@@ -222,6 +225,8 @@ void OffboardControl::process_path(const Path::SharedPtr msg)
 
     if (msg->poses.size() >= 2) { // Need at least two poses
         RCLCPP_INFO(this->get_logger(), "Received Path with %zu poses", msg->poses.size());
+
+        last_tf_pos = pos_tf; // Update the last TF position
 
         int straight_line_points = std::max(1, countStraightLinePoints(msg->poses));
         RCLCPP_INFO(this->get_logger(), "Number of points on a straight line: %d", straight_line_points);
@@ -340,12 +345,12 @@ void OffboardControl::process_path(const Path::SharedPtr msg)
             double angle_to_velocity = std::acos(std::clamp(dot_product, -1.0, 1.0)); // Clamp to avoid numerical issues
 
 
-            if (std::abs(angle_to_velocity) > max_yaw_offset_) {
+            if (std::abs(angle_to_velocity) > max_yaw_to_velocity_angle_) {
                 RCLCPP_WARN(this->get_logger(), "Yaw exceeds max allowable offset. Adjusting yaw.");
             
                 // Calculate the two possible yaw values
-                double yaw_positive = normalizeAngle(std::atan2(velocity_vector.y(), velocity_vector.x()) + max_yaw_offset_);
-                double yaw_negative = normalizeAngle(std::atan2(velocity_vector.y(), velocity_vector.x()) - max_yaw_offset_);
+                double yaw_positive = normalizeAngle(std::atan2(velocity_vector.y(), velocity_vector.x()) + max_yaw_to_velocity_angle_);
+                double yaw_negative = normalizeAngle(std::atan2(velocity_vector.y(), velocity_vector.x()) - max_yaw_to_velocity_angle_);
             
                 // Select the yaw value that is closer to the velocity vector
                 if (std::abs(normalizeAngle(yaw_positive - yaw_next)) < std::abs(normalizeAngle(yaw_negative - yaw_next))) {
@@ -399,6 +404,7 @@ void OffboardControl::process_path(const Path::SharedPtr msg)
         }
     } else if (msg->poses.size() == 1) {
         RCLCPP_WARN(this->get_logger(), "Received Path message with only one pose.");
+        last_tf_pos = pos_tf; // Update the last TF position
         const auto &current_pose = msg->poses[0];
         // Calculate the velocity vector from the current pose to the tf position
         Eigen::Vector3d current_position(current_pose.pose.position.x, current_pose.pose.position.y, current_pose.pose.position.z);
@@ -424,12 +430,12 @@ void OffboardControl::process_path(const Path::SharedPtr msg)
         previous_yaw = yaw_next; // Update the previous yaw
 
         RCLCPP_WARN(this->get_logger(), "Received empty Path message");
-        // Publish zero velocity and acceleration and current yaw
+        // Publish last_tf_pos and acceleration and current yaw
         TrajectorySetpoint setpoint_msg{};
         setpoint_msg.position = {
-            static_cast<float>(pos_tf.y()),
-            static_cast<float>(pos_tf.x()),
-            static_cast<float>(-pos_tf.z())
+            static_cast<float>(last_tf_pos.y()),
+            static_cast<float>(last_tf_pos.x()),
+            static_cast<float>(-last_tf_pos.z())
         };
         setpoint_msg.yaw = static_cast<float>(-yaw_next+ M_PI / 2.0);
     }

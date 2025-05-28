@@ -72,10 +72,8 @@ class TestFlight(Node):
         self.vehicle_status = VehicleStatus()
         self.takeoff_height = -5.0
         self.current_checkpoint = 0
-        self.coordinates = generate_coordinates(center_x=200, center_y=0, radius=20, num_points=20, height=120, start=self.start)
-        self.center = [200, 0]  # Center of the circle
-        self.yaw = 0.0
-        self.number_of_waypoints = 6
+        self.coordinates, self.yaw  = generate_coordinates()
+        self.number_of_waypoints = 23
         self.coordinates_to_vist = self.coordinates.copy()
         
 
@@ -120,7 +118,7 @@ class TestFlight(Node):
             pose.pose.position.z = position[2]
 
             # Calculate yaw angle toward the center
-            yaw = math.atan2(self.center[1] - position[1], self.center[0] - position[0])
+            yaw = self.yaw[checkpoint_index][0]  # Use the yaw from the yaw list
 
             # Convert yaw to quaternion
             quaternion = R.from_euler('xyz', [0, 0, yaw]).as_quat()
@@ -181,26 +179,28 @@ def calculate_angle(point, center):
     """Calculates the angle of a point relative to the center."""
     return math.atan2(point[1] - center[1], point[0] - center[0])
 
-def generate_coordinates(center_x=150, center_y=0, center_z=0, radius=75, num_points=90, height=125, start=True):
+def generate_coordinates():
     """Generates coordinates in a circle, starting from the closest point to [0, 0, 50]."""
-    initial_point = [0.0, 0.0, 100.0]
-    initial_point_1 = [20.0, 0.0, 105.0]
+    coordinates = [[0.0, 0.0, 100.0], 
+                      [185.0, -8.0, 120.0], 
+                      [188.0, -11.0, 130.0], [174.0, -11.0, 142.0], [160.0, -11.0, 155.0],
+                      [160.0, -6.0, 155.0],[174.0, -6.0, 142.0], [188.0, -6.0, 130.0],
+                      [210.0, -6.0, 125.0], [228.0, -6.0, 130.0], [250.0, -6.0, 135.0],
+                      [250.0, -11.0, 135.0],[228.0, -11.0, 130.0], [210.0, -11.0, 125.0],
+                      [198.0, -11.0, 107.0], [193.0, -11.0, 90.0], [188.0, -11.0, 67.0],
+                      [188.0, -6.0, 67.0], [193.0, -6.0, 90.0], [198.0, -6.0, 107.0], 
+                      [185.0, 0.0, 120.0], [20.0, 0.0, 105.0]] # Initial points to start from
+    yaw = [[0.0], 
+           [0.0], 
+           [np.pi/2], [np.pi/2], [np.pi/2 - np.pi/18],
+           [-np.pi/2 + np.pi/18], [-np.pi/2], [-np.pi/2],
+           [-np.pi/2], [-np.pi/2], [-np.pi/2 -np.pi/18],
+           [np.pi/2 + np.pi/18], [np.pi/2], [np.pi/2],
+           [np.pi/2], [np.pi/2], [np.pi/2 - np.pi/18],
+           [-np.pi/2 + np.pi/18], [-np.pi/2], [-np.pi/2],
+           [0.0],[np.pi]]  # Yaw angles for each initial point
 
-    generated_points = generate_points_in_radius(center_x, center_y, center_z, radius, num_points, height)
-
-    # Find the closest point
-    closest_point = min(generated_points, key=lambda point: calculate_distance(initial_point, point))
-    closest_point_index = generated_points.index(closest_point)
-
-    # Arrange the points in circular order starting from the closest
-    ordered_points = generated_points[closest_point_index:] + generated_points[:closest_point_index]
-
-    if start:
-        coordinates = [initial_point] + [initial_point_1] + [ordered_points[0]] + ordered_points[1:] + [initial_point]
-    else:
-        coordinates = ordered_points
-
-    return coordinates
+    return coordinates, yaw
 
 def main(args=None) -> None:
     print("Starting offboard control node...")
