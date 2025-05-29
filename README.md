@@ -113,7 +113,7 @@ echo source ~/ws_ros2/install/setup.bash >> ~/.bashrc
 </details>
 
 <details>
-<summary>Guide to the pegasus_sim_env pkg </summary>
+<summary>Guide to install the pegasus_sim_env pkg </summary>
 
 ### Clone the pkg ###
 ```
