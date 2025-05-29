@@ -438,6 +438,8 @@ void OffboardControl::process_path(const Path::SharedPtr msg)
             static_cast<float>(-last_tf_pos.z())
         };
         setpoint_msg.yaw = static_cast<float>(-yaw_next+ M_PI / 2.0);
+        publish_offboard_control_mode_velocity();
+        trajectory_setpoint_publisher_->publish(setpoint_msg);
     }
 }
 

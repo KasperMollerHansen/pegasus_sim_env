@@ -19,10 +19,10 @@ class PathCollector(Node):
         # For loggin both position and orientation
 
         self.data_type = "pose" 
-        # self.path_topic_name = "/planner/ground_truth_trajectory"
-        self.path_topic_name = "osep/viewpoints"
-        # self.path_fname = "ground_truth_3d_2.csv"
-        self.path_fname = "osep_3d_2.csv"
+        self.path_topic_name = "/planner/ground_truth_trajectory"
+        self.path_fname = "ground_truth_3d_2.csv"
+        # self.path_topic_name = "osep/viewpoints"
+        # self.path_fname = "osep_3d_2.csv"
 
 
         # For logging extracted skeleton
